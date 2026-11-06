@@ -6,6 +6,7 @@ import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.nuvio.tv.BuildConfig
+import com.nuvio.tv.core.build.AppFeaturePolicy
 import com.nuvio.tv.R
 import com.nuvio.tv.updater.model.AppUpdate
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -58,6 +59,12 @@ class UpdateViewModel @Inject constructor(
 
     init {
         viewModelScope.launch {
+            if (!AppFeaturePolicy.inAppUpdatesEnabled) {
+                // Also clears jobs left by an earlier build.
+                UpdateJobService.cancelPeriodicCheck(context)
+                UpdateJobService.cancelIdleInstall(context)
+                return@launch
+            }
             val enabled = updatePreferences.updateBannerEnabled.first()
             val channel = updatePreferences.getOrInitializeUpdateChannel()
             val autoInstallEnabled = updatePreferences.autoInstallEnabled.first()
@@ -80,6 +87,7 @@ class UpdateViewModel @Inject constructor(
     }
 
     fun checkForUpdates(force: Boolean, showNoUpdateFeedback: Boolean) {
+        if (!AppFeaturePolicy.inAppUpdatesEnabled) return
         if (!force && !_uiState.value.updateBannerEnabled) return
 
         updateCheckJob?.cancel()
