@@ -423,7 +423,10 @@ class TorrentService @Inject constructor(
             while (isActive) {
                 if (!isCurrentGeneration(generation)) return@launch
                 if (_state.value is TorrentState.Streaming) {
-                    val route = try {
+                    // Personal build: the 1 s sample log is off by default. Turn on without rebuilding:
+                    // adb shell setprop log.tag.NuvioP2PDiag DEBUG   (off: setprop log.tag.NuvioP2PDiag INFO)
+                    val sampleLogEnabled = Log.isLoggable(TorrentDiagnosticTag, Log.DEBUG)
+                    val route = if (!sampleLogEnabled) null else try {
                         activeEngine.currentStreamStats(stream.id)
                     } catch (cancellation: CancellationException) {
                         throw cancellation
@@ -433,7 +436,7 @@ class TorrentService @Inject constructor(
                     }
                     val aggregate = activeEngine.stats.value
                     val nowMs = SystemClock.elapsedRealtime()
-                    if (nowMs >= nextSampleAtMs) {
+                    if (sampleLogEnabled && nowMs >= nextSampleAtMs) {
                         nextSampleAtMs = nowMs + SAMPLE_INTERVAL_MS
                         Log.i(
                             TorrentDiagnosticTag,

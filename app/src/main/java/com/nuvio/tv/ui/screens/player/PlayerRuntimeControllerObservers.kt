@@ -15,6 +15,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
@@ -125,6 +126,12 @@ internal fun PlayerRuntimeController.fetchAddonSubtitles() {
     }
 
     scope.launch {
+        // Personal build: lazy subtitles. Wait until playback has started (or 20 s) so the
+        // add-on fetch and list processing do not compete with startup and the controls.
+        kotlinx.coroutines.withTimeoutOrNull(20_000L) {
+            _uiState.first { it.isPlaying && !it.showLoadingOverlay }
+        }
+        kotlinx.coroutines.delay(1_500L)
         _uiState.update {
             it.copy(
                 isLoadingAddonSubtitles = true,

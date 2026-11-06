@@ -52,6 +52,7 @@ import androidx.compose.foundation.layout.absoluteOffset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.lazy.LazyColumn
@@ -2996,6 +2997,7 @@ private fun PlayerControlsOverlay(
                         icon = if (uiState.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
                         iconPainter = if (uiState.isPlaying) customPausePainter else customPlayPainter,
                         contentDescription = if (uiState.isPlaying) stringResource(R.string.cd_pause) else stringResource(R.string.cd_play),
+                        label = if (uiState.isPlaying) "Pause" else "Play",
                         onClick = onPlayPause,
                         focusRequester = playPauseFocusRequester,
                         upFocusRequester = progressUpTarget,
@@ -3007,6 +3009,7 @@ private fun PlayerControlsOverlay(
                         ControlButton(
                             icon = Icons.Default.SkipNext,
                             contentDescription = stringResource(R.string.next_episode_label),
+                            label = "Next",
                             onClick = onPlayNextEpisode,
                             upFocusRequester = progressUpTarget,
                             onDownKey = onHideControls,
@@ -3019,6 +3022,7 @@ private fun PlayerControlsOverlay(
                             icon = Icons.Default.ClosedCaption,
                             iconPainter = customSubtitlePainter,
                             contentDescription = stringResource(R.string.cd_subtitles),
+                            label = "Subtitles",
                             onClick = onShowSubtitleDialog,
                             upFocusRequester = progressUpTarget,
                             onDownKey = onHideControls,
@@ -3031,6 +3035,7 @@ private fun PlayerControlsOverlay(
                             icon = Icons.AutoMirrored.Filled.VolumeUp,
                             iconPainter = customAudioPainter,
                             contentDescription = stringResource(R.string.cd_audio_tracks),
+                            label = "Audio",
                             onClick = onShowAudioDialog,
                             upFocusRequester = progressUpTarget,
                             onDownKey = onHideControls,
@@ -3042,6 +3047,7 @@ private fun PlayerControlsOverlay(
                         ControlButton(
                             icon = Icons.AutoMirrored.Filled.Toc,
                             contentDescription = stringResource(R.string.player_chapters),
+                            label = "Chapters",
                             onClick = onShowChaptersPanel,
                             upFocusRequester = progressUpTarget,
                             onDownKey = onHideControls,
@@ -3053,6 +3059,7 @@ private fun PlayerControlsOverlay(
                         icon = Icons.Default.SwapHoriz,
                         iconPainter = customSourcePainter,
                         contentDescription = stringResource(R.string.cd_sources),
+                        label = "Sources",
                         onClick = onShowSourcesPanel,
                         upFocusRequester = progressUpTarget,
                         onDownKey = onHideControls,
@@ -3064,6 +3071,7 @@ private fun PlayerControlsOverlay(
                             icon = Icons.AutoMirrored.Filled.List,
                             iconPainter = customEpisodesPainter,
                             contentDescription = stringResource(R.string.cd_episodes),
+                            label = "Episodes",
                             onClick = onShowEpisodesPanel,
                             upFocusRequester = progressUpTarget,
                             onDownKey = onHideControls,
@@ -3075,6 +3083,7 @@ private fun PlayerControlsOverlay(
                         ControlButton(
                             icon = Icons.Rounded.Groups,
                             contentDescription = stringResource(R.string.party_title),
+                            label = "Party",
                             onClick = onShowPartyPanel,
                             upFocusRequester = progressUpTarget,
                             onDownKey = onHideControls,
@@ -3101,6 +3110,7 @@ private fun PlayerControlsOverlay(
                             ControlButton(
                                 icon = Icons.Default.Speed,
                                 contentDescription = stringResource(R.string.cd_playback_speed),
+                                label = "Speed",
                                 onClick = {
                                     onShowSpeedDialog()
                                 },
@@ -3112,6 +3122,7 @@ private fun PlayerControlsOverlay(
                                 icon = Icons.Default.AspectRatio,
                                 iconPainter = customAspectPainter,
                                 contentDescription = stringResource(R.string.cd_aspect_ratio),
+                                label = "Aspect",
                                 onClick = {
                                     onToggleAspectRatio()
                                 },
@@ -3122,6 +3133,7 @@ private fun PlayerControlsOverlay(
                             ControlButton(
                                 icon = Icons.Default.SwapHoriz,
                                 contentDescription = stringResource(R.string.cd_switch_player_engine),
+                                label = "Engine",
                                 onClick = { showEngineSwitchConfirm = true },
                                 upFocusRequester = progressUpTarget,
                                 onDownKey = onHideControls,
@@ -3131,6 +3143,7 @@ private fun PlayerControlsOverlay(
                                 ControlButton(
                                     icon = Icons.AutoMirrored.Filled.OpenInNew,
                                     contentDescription = stringResource(R.string.cd_open_external_player),
+                                    label = "External",
                                     onClick = openInExternalPlayer,
                                     upFocusRequester = progressUpTarget,
                                     onDownKey = onHideControls,
@@ -3140,6 +3153,7 @@ private fun PlayerControlsOverlay(
                             ControlButton(
                                 icon = Icons.Default.Info,
                                 contentDescription = stringResource(R.string.cd_stream_info),
+                                label = "Info",
                                 onClick = {
                                     onShowStreamInfo()
                                 },
@@ -3170,6 +3184,7 @@ private fun PlayerControlsOverlay(
                             Icons.AutoMirrored.Filled.KeyboardArrowRight
                         },
                         contentDescription = if (uiState.showMoreDialog) stringResource(R.string.cd_close_more_actions) else stringResource(R.string.cd_more_actions),
+                        label = if (uiState.showMoreDialog) "Less" else "More",
                         onClick = onToggleMoreActions,
                         upFocusRequester = progressUpTarget,
                         onDownKey = onHideControls,
@@ -3267,6 +3282,7 @@ private fun ReportControlButton(
         ControlButton(
             icon = Icons.Default.BugReport,
             contentDescription = stringResource(R.string.player_report_issue),
+            label = "Report",
             onClick = onClick,
             enabled = enabled,
             upFocusRequester = upFocusRequester,
@@ -3305,10 +3321,29 @@ private fun ControlButton(
     enabled: Boolean = true,
     onDownKey: (() -> Unit)? = null,
     onFocused: (() -> Unit)? = null,
-    contentColor: Color = Color.White
+    contentColor: Color = Color.White,
+    label: String? = null
 ) {
     var isFocused by remember { mutableStateOf(false) }
 
+    // Personal build: English name under the focused button. Drawn as an overlay below the
+    // icon (no layout change), so the control row keeps its size and position.
+    Box(contentAlignment = Alignment.Center) {
+    if (isFocused && !label.isNullOrBlank()) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall,
+            color = Color.White,
+            maxLines = 1,
+            softWrap = false,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .offset(y = 26.dp)
+                .wrapContentWidth(unbounded = true)
+                .background(Color.Black.copy(alpha = 0.7f), RoundedCornerShape(4.dp))
+                .padding(horizontal = 6.dp, vertical = 2.dp)
+        )
+    }
     IconButton(
         onClick = onClick,
         enabled = enabled,
@@ -3372,6 +3407,7 @@ private fun ControlButton(
             )
         }
     }
+}
 }
 
 @Composable
