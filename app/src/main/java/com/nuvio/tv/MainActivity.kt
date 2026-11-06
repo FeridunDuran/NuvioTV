@@ -122,6 +122,7 @@ import androidx.core.os.ConfigurationCompat
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.lifecycleScope
+import androidx.core.view.doOnPreDraw
 import androidx.metrics.performance.JankStats
 import androidx.metrics.performance.PerformanceMetricsState
 import androidx.navigation.NavHostController
@@ -1278,11 +1279,15 @@ open class MainActivity : ComponentActivity() {
             }
         }
 
+        window.decorView.doOnPreDraw {
+            com.nuvio.tv.core.perf.TurboPerf.mark("activity_first_predraw")
+        }
         jankStats = JankStats.createAndTrack(window) { frameData ->
-            if (frameData.isJank) {
+            if (frameData.isJank && Log.isLoggable("TurboPerf", Log.DEBUG)) {
                 Log.w(
                     "JankStats",
-                    "JANK: ${frameData.frameDurationUiNanos / 1_000_000}ms | states: ${frameData.states}"
+                    "JANK: ${frameData.frameDurationUiNanos / 1_000_000}ms | " +
+                        "screen=${frameData.states.firstOrNull { it.key == "Screen" }?.value?.substringBefore('/')}"
                 )
             }
         }
@@ -1375,6 +1380,7 @@ open class MainActivity : ComponentActivity() {
         // tracked; onActivityResult keeps it for a completion or dismisses it otherwise.
         externalPlaybackTracker.raiseAutoNextOverlayOnReturn()
         super.onStart()
+        com.nuvio.tv.core.perf.TurboPerf.setForeground(true)
         startupSyncService.startPeriodicSurfacePulls()
         androidTvChannelSyncService.onForegroundChanged(true)
     }
@@ -1382,6 +1388,7 @@ open class MainActivity : ComponentActivity() {
     override fun onStop() {
         externalPlaybackTracker.onExternalPlayerCoveredApp()
         super.onStop()
+        com.nuvio.tv.core.perf.TurboPerf.setForeground(false)
         startupSyncService.stopPeriodicSurfacePulls()
         // App going to background (e.g. user returning to the launcher): reconcile the
         // Continue Watching channel once so Projectivy repaints it with fresh progress.

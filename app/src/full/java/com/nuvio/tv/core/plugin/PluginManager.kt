@@ -1047,8 +1047,13 @@ class PluginManager @Inject constructor(
                 manifestAdapter.fromJson(body)
             }
             
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: com.squareup.moshi.JsonDataException) {
+            Log.d(TAG, "Repository response is not a Nuvio scraper manifest; caller may try external format")
+            null
         } catch (e: Exception) {
-            Log.e(TAG, "Error fetching manifest: ${e.message}", e)
+            Log.e(TAG, "Error fetching manifest", e)
             null
         }
     }

@@ -73,6 +73,7 @@ class StartupSyncService @Inject constructor(
     private val cwEnrichmentCache: com.nuvio.tv.data.local.ContinueWatchingEnrichmentCache
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val pluginStartupQuietUntilMs = SystemClock.elapsedRealtime() + 20_000L
     private var startupPullJob: Job? = null
     private var activityPullJob: Job? = null
     private var periodicSurfacePullJob: Job? = null
@@ -659,6 +660,10 @@ class StartupSyncService @Inject constructor(
     }
 
     private suspend fun pullPlugins(profileId: Int, generation: Int) {
+        // Cached plugins remain usable while startup's catalogs/settings settle.
+        // This stays inside the scheduler job, so profile changes/sign-out cancel it.
+        val startupDelayMs = (pluginStartupQuietUntilMs - SystemClock.elapsedRealtime()).coerceAtLeast(0L)
+        if (startupDelayMs > 0L) delay(startupDelayMs)
         if (!authManager.isAuthenticated) return
         pluginManager.discardPendingSync()
         pluginManager.isSyncingFromRemote = true

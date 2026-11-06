@@ -53,6 +53,7 @@ import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.merge
+import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -291,6 +292,8 @@ class TraktProgressService @Inject constructor(
                 val success = try {
                     refreshRemoteSnapshot()
                     true
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (e: Exception) {
                     Log.w(TAG, "Failed to refresh remote snapshot", e)
                     false
@@ -1019,7 +1022,14 @@ class TraktProgressService @Inject constructor(
     }
 
     private fun refreshEvents(): Flow<Unit> {
-        return merge(refreshTicker(), refreshSignals).onStart { emit(Unit) }
+        // Keep cold-start IO/metadata work out of the initial home render. Explicit
+        // connection/manual refresh signals remain immediate during this delay.
+        val automaticRefreshes = flow {
+            delay(15_000L)
+            emit(Unit)
+            emitAll(refreshTicker())
+        }
+        return merge(automaticRefreshes, refreshSignals)
     }
 
     private fun updateRefreshBackoff(success: Boolean) {
@@ -1046,6 +1056,8 @@ class TraktProgressService @Inject constructor(
 
     @VisibleForTesting
     internal suspend fun refreshRemoteSnapshot() {
+        if (!traktAuthService.hasRequiredCredentials()) return
+        if (!traktAuthService.getCurrentAuthState().isAuthenticated) return
         if (!traktAuthService.isCircuitClosed()) {
             trace("refreshRemoteSnapshot: circuit breaker open, skipping")
             throw IOException("Trakt circuit breaker is open")

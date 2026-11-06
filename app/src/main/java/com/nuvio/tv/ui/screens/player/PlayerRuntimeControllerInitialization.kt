@@ -1446,6 +1446,9 @@ internal fun PlayerRuntimeController.initializePlayer(
                     }
 
                     override fun onTracksChanged(tracks: Tracks) {
+                        Log.i(PlayerRuntimeController.TAG, "TRACK_SUMMARY: groups=${tracks.groups.size} " +
+                            "video=${tracks.isTypeSupported(C.TRACK_TYPE_VIDEO)} " +
+                            "audio=${tracks.isTypeSupported(C.TRACK_TYPE_AUDIO)}")
                         updateAvailableTracks(tracks)
                     }
 
@@ -1459,6 +1462,7 @@ internal fun PlayerRuntimeController.initializePlayer(
 
                     override fun onRenderedFirstFrame() {
                         val isFirstFrame = !hasRenderedFirstFrame  // capture BEFORE flipping
+                        if (isFirstFrame) com.nuvio.tv.core.perf.TurboPerf.mark("player_first_frame")
                         hasRenderedFirstFrame = true
                         mediaSourceFactory.unlockStartupPrefetch()
                         if (isFirstFrame && _uiState.value.postPlayDismissedForCurrentEpisode) {

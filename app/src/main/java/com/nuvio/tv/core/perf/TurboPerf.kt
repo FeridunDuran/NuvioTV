@@ -52,11 +52,26 @@ object TurboPerf {
         if (started) return
         started = true
         app = application
-        main.post {
+        mark("process_start")
+    }
+
+    private var sampling = false
+
+    // adb shell setprop log.tag.TurboPerf DEBUG; backgrounding always stops sampling.
+    fun setForeground(foreground: Boolean) {
+        val enable = foreground && Log.isLoggable(TAG, Log.DEBUG)
+        if (sampling == enable) return
+        sampling = enable
+        main.removeCallbacks(report)
+        Choreographer.getInstance().removeFrameCallback(frameCallback)
+        lastFrameNs = 0L
+        frames = 0
+        late = 0
+        worstNs = 0L
+        if (enable) {
             Choreographer.getInstance().postFrameCallback(frameCallback)
             main.postDelayed(report, REPORT_MS)
         }
-        mark("process_start")
     }
 
     fun mark(name: String) {
