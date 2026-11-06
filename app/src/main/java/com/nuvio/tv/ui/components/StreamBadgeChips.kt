@@ -122,7 +122,7 @@ fun StreamBadgeChips(
         modifier = modifier
             .fillMaxWidth()
             .clipToBounds()
-            .then(if (focused) Modifier.basicMarquee(iterations = Int.MAX_VALUE, velocity = MarqueeVelocity, spacing = MarqueeSpacing(36.dp)) else Modifier)
+            .then(if (focused) Modifier.basicMarquee(iterations = 1 /* Personal build: scroll once, then stop redrawing */, velocity = MarqueeVelocity, spacing = MarqueeSpacing(36.dp)) else Modifier)
             .then(if (chipAlpha < 1f) Modifier.alpha(chipAlpha) else Modifier),
         contentAlignment = Alignment.CenterStart
     ) {

@@ -345,6 +345,8 @@ android {
     packaging {
         jniLibs {
             useLegacyPackaging = true
+            // Personal build: ExoPlayer only, drop mpv's native player.
+            excludes += listOf("lib/*/libmpv.so", "lib/*/libplayer.so")
             // Keep one consistent native set across dependencies.
             pickFirsts += listOf(
                 "lib/*/libc++_shared.so",

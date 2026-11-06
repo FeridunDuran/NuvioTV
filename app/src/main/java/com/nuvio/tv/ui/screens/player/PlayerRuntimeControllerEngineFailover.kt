@@ -12,6 +12,7 @@ internal fun PlayerRuntimeController.maybeAutoSwitchInternalPlayerOnStartupError
     detailedError: String,
     allowEngineFailover: Boolean
 ): Boolean {
+    if (true) return false // Personal build: mpv is not packaged, no engine failover.
     if (!allowEngineFailover) return false
     if (!autoSwitchInternalPlayerOnErrorEnabled) return false
     if (startupEngineFailoverTriggered) return false
@@ -70,6 +71,7 @@ internal fun PlayerRuntimeController.switchToInternalPlayerEngine(
     targetEngine: InternalPlayerEngine,
     reason: String = "manual-switch"
 ) {
+    if (targetEngine == InternalPlayerEngine.MVP_PLAYER) return // Personal build: mpv is not packaged.
     if (currentStreamUrl.isBlank()) return
 
     beginSwitchTraceSession(reason = reason, targetEngine = targetEngine)

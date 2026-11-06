@@ -836,7 +836,7 @@ class PlayerRuntimeController(
         stopServerPlayback()
         releasePlayer()
         stopTorrentStream()
-        torrentService.shutdown()
+        torrentService.shutdownWhenIdle() // Personal build: engine stays warm 5 min.
         startupLoadingReportJob?.cancel()
         vodTelemetryJob?.cancel()
         mediaSourceFactory.shutdown()

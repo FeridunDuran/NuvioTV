@@ -3130,15 +3130,6 @@ private fun PlayerControlsOverlay(
                                 onDownKey = onHideControls,
                                 onFocused = onResetHideTimer
                             )
-                            ControlButton(
-                                icon = Icons.Default.SwapHoriz,
-                                contentDescription = stringResource(R.string.cd_switch_player_engine),
-                                label = "Engine",
-                                onClick = { showEngineSwitchConfirm = true },
-                                upFocusRequester = progressUpTarget,
-                                onDownKey = onHideControls,
-                                onFocused = onResetHideTimer
-                            )
                             onOpenInExternalPlayer?.let { openInExternalPlayer ->
                                 ControlButton(
                                     icon = Icons.AutoMirrored.Filled.OpenInNew,

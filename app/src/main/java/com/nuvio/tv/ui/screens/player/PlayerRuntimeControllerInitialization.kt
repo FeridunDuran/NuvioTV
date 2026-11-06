@@ -246,6 +246,10 @@ internal fun PlayerRuntimeController.initializePlayer(
             if (effectiveInternalPlayerEngine == InternalPlayerEngine.AUTO) {
                 effectiveInternalPlayerEngine = resolveAutoInternalPlayerEngine()
             }
+            // Personal build: mpv is not packaged; always play with ExoPlayer.
+            if (effectiveInternalPlayerEngine == InternalPlayerEngine.MVP_PLAYER) {
+                effectiveInternalPlayerEngine = InternalPlayerEngine.EXOPLAYER
+            }
             runtimeInternalPlayerEngineOverride = overrideInternalPlayerEngine
             if (overrideInternalPlayerEngine == null && playerSettings.internalPlayerEngine == InternalPlayerEngine.AUTO) {
                 resolvedAutoPlayerEngine = effectiveInternalPlayerEngine

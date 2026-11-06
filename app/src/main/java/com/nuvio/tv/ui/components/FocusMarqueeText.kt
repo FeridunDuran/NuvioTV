@@ -15,7 +15,7 @@ import androidx.tv.material3.Text
 import com.nuvio.tv.ui.util.contentLayoutDirection
 
 private val MarqueeVelocity = 45.dp
-internal const val MarqueeIterations = 3
+internal const val MarqueeIterations = 1 // Personal build: was 3
 
 /**
  * Single-line text that scrolls (marquees) horizontally while [focused] if the content overflows,

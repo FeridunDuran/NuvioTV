@@ -80,7 +80,24 @@ class TorrentService @Inject constructor(
         filename: String? = null,
         trackers: List<String> = emptyList()
     ): String = withContext(Dispatchers.IO) {
+        idleShutdownJob?.cancel()
+        idleShutdownJob = null
         startMutex.withLock { startStreamLocked(infoHash, fileIdx, filename, trackers) }
+    }
+
+    // Personal build: keep the engine (peers, DHT, piece cache) warm for a while after the player
+    // closes, so the next episode or a re-open starts faster. Stops the stream now, shuts the
+    // engine down only if nothing new starts within the idle window.
+    @Volatile
+    private var idleShutdownJob: Job? = null
+
+    fun shutdownWhenIdle(idleMs: Long = 5 * 60_000L) {
+        stopStream()
+        idleShutdownJob?.cancel()
+        idleShutdownJob = scope.launch {
+            delay(idleMs)
+            if (_state.value is TorrentState.Idle) shutdown()
+        }
     }
 
     suspend fun clearCache(): TorrentCacheClearResult = withContext(Dispatchers.IO) {
