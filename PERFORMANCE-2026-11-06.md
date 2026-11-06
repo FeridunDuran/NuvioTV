@@ -41,3 +41,10 @@ JankStats aşağıdaki sayıları yalnız gecikmiş kareler için kaydediyor; p5
 - Kod: kaynak sayfası açık sayfa sayısını korur, sıralama Default dispatcher'da; Trakt otomatik ilk iş 15 sn gecikir (manuel hemen); plugin senkronu ilk 20 sn ertelenir; manifest formatı algılarken beklenen JsonDataException kısa loglanır, dış format fallback korunur; perf sürekli callback yalnız DEBUG log property ile açıkken/foreground çalışır; predraw, kaynak hazır ve ilk video karesi/track işaretleri eklendi.
 - Yeni APK TV'ye ayarlar korunarak kuruldu; speed derleme Success / 113758 ms. Activity launch TotalTime 1033 ms; bu ana sayfanın tamamen hazır olma süresi değildir. İlk log kontrolünde crash/Trakt progress hatası yok, default sürekli perf örneklemesi kapalı. 15 başlangıç karesinde %93,33 jank var; bu küçük başlangıç örneği önceki gezinme senaryosuyla kıyaslanamaz. Performans kazancı, Trakt hesap onayı ve HDHub/Plavio yeniden denemesi henüz doğrulanmadı.
 - Seçili fullRelease regresyon testleri: 39 test, 0 failure/error. Release build başarılı (16 dk 20 sn). APK SHA256: 4b0eb5aba2dc06aad8b1d7a8282d65ba3abad944817a01c02f86e8f4d229d3ce.
+
+## Kullanıcı yeniden denemesi — TV log doğrulaması
+- Kullanıcı yeni sonuçları olumlu bildirdi. PID 20186 logları salt okunur ağ ADB ile yeniden kontrol edildi; oynatma bölünmedi.
+- HDHub/Pixeldrain: üç oturumda 4 track grubu, desteklenen video+audio; AVC/HEVC donanım decoder. player_open -> gerçek ilk kare: 4818, 5042, 5568 ms. Önceki boş track/decoder yok durumu bu denemelerde giderildi.
+- Plavio macdn MP4: 2 track grubu, AVC donanım decoder init 188 ms; player_open -> ilk kare 4861 ms. Önceki kısa/sonuçsuz denemenin artık oynadığı doğrulandı.
+- İlk kaynak sonucu: 267/258/198 ms. Tüm sonuçlar: 3092/301/200 ms; farklı/cache etkili oturumlar, karşılaştırmalı performans testi sayılmaz.
+- Fatal crash ve Trakt progress fetch hatası: 0. Kullanıcının olumlu geri bildirimi var; hesap tokenları/oturum bilgileri okunmadı.
