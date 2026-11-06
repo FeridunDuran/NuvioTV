@@ -623,7 +623,7 @@ internal fun episodeOverlayBackdropRequest(
         .data(url)
         .memoryCacheKey(cacheKey)
         .diskCacheKey(url)
-        .crossfade(true)
+        .crossfade(false)
         .size(width = widthPx, height = heightPx)
         .apply {
             if (blur) transformations(BlurTransformation())

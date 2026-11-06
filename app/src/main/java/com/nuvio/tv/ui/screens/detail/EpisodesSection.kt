@@ -750,7 +750,7 @@ private fun EpisodeCard(
     val thumbnailRequest = remember(context, episode.thumbnail, thumbnailWidthPx, thumbnailHeightPx, shouldBlur) {
         ImageRequest.Builder(context)
             .data(episode.thumbnail)
-            .crossfade(true)
+            .crossfade(false)
             .size(width = thumbnailWidthPx, height = thumbnailHeightPx)
             .apply {
                 if (shouldBlur) {

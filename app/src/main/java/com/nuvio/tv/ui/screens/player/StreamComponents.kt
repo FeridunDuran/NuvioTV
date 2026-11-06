@@ -105,7 +105,7 @@ internal fun StreamItem(
                 .data(logo)
                 .size(width = logoDecodeSize, height = logoDecodeSize)
                 .memoryCacheKey("${logo}_${logoDecodeSize}x${logoDecodeSize}")
-                .crossfade(true)
+                .crossfade(false)
                 .build()
         }
     }

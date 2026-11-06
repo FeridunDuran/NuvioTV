@@ -885,7 +885,7 @@ private fun EpisodeItem(
                 AsyncImage(
                     model = ImageRequest.Builder(LocalContext.current)
                         .data(episode.thumbnail)
-                        .crossfade(true)
+                        .crossfade(false)
                         .apply {
                             if (shouldBlur) {
                                 transformations(com.nuvio.tv.ui.util.BlurTransformation())

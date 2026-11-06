@@ -341,7 +341,7 @@ private fun rememberBackgroundRequest(
         backgroundItem?.let {
             ImageRequest.Builder(context)
                 .data(it)
-                .crossfade(true)
+                .crossfade(false)
                 .build()
         }
     }
@@ -420,7 +420,7 @@ private fun TmdbEntityHero(
             val logoPainter = rememberAsyncImagePainter(
                 model = ImageRequest.Builder(context)
                     .data(data.header.logo)
-                    .crossfade(true)
+                    .crossfade(false)
                     .allowHardware(false) // needed to read pixels
                     .build()
             )

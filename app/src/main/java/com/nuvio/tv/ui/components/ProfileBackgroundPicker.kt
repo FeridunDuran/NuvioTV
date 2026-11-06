@@ -207,7 +207,7 @@ fun ProfileBackgroundImage(
             .memoryCacheKey("profile-background-${background.id}-v${background.assetVersion}")
             .diskCachePolicy(CachePolicy.DISABLED)
             .allowRgb565(false)
-            .crossfade(true)
+            .crossfade(false)
             .build(),
         contentDescription = contentDescription,
         modifier = modifier,
@@ -229,7 +229,7 @@ fun CustomProfileBackgroundImage(
             .diskCacheKey("custom-profile-background-$imageUrl")
             .diskCachePolicy(CachePolicy.ENABLED)
             .allowRgb565(false)
-            .crossfade(true)
+            .crossfade(false)
             .build(),
         contentDescription = contentDescription,
         modifier = modifier,

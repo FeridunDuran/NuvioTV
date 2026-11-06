@@ -376,7 +376,7 @@ private fun HeroTitleContent(
         preview.logo?.let {
             ImageRequest.Builder(context)
                 .data(it)
-                .crossfade(true)
+                .crossfade(false)
                 .size(width = logoMaxWidthPx, height = logoHeightPx)
                 .build()
         }

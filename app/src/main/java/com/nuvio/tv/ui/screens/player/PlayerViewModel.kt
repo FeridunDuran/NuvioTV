@@ -109,6 +109,9 @@ class PlayerViewModel @Inject constructor(
         // Release trailer player codec resources so the full-screen player can
         // claim hardware decoders without contention (prevents black screen).
         trailerPlayerPool.yield()
+        // Posters are not needed while watching; give their memory to the player.
+        coil3.SingletonImageLoader.get(context).memoryCache?.clear()
+        com.nuvio.tv.core.perf.TurboPerf.mark("player_open")
     }
 
     internal val controller = PlayerRuntimeController(

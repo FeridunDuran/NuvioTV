@@ -906,7 +906,7 @@ private fun PersonAvatar(
     val painter = rememberAsyncImagePainter(
         model = ImageRequest.Builder(context)
             .data(avatarUrl)
-            .crossfade(true)
+            .crossfade(false)
             .build()
     )
 

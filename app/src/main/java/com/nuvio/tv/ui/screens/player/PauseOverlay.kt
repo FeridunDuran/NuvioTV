@@ -179,7 +179,7 @@ private fun PauseMetadataView(
                         model = ImageRequest.Builder(LocalContext.current)
                             .data(logo)
                             .memoryCacheKey(logo)
-                            .crossfade(true)
+                            .crossfade(false)
                             .build(),
                         contentDescription = title,
                         contentScale = ContentScale.Fit,
@@ -334,7 +334,7 @@ private fun CastDetailView(
                 AsyncImage(
                     model = ImageRequest.Builder(LocalContext.current)
                         .data(member.photo)
-                        .crossfade(true)
+                        .crossfade(false)
                         .build(),
                     contentDescription = member.name,
                     modifier = Modifier

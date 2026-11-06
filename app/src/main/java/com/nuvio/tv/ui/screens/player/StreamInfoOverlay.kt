@@ -125,7 +125,7 @@ private fun StreamInfoContent(data: StreamInfoData) {
                 AsyncImage(
                     model = ImageRequest.Builder(LocalContext.current)
                         .data(data.addonLogo)
-                        .crossfade(true)
+                        .crossfade(false)
                         .build(),
                     contentDescription = data.addonName,
                     modifier = Modifier

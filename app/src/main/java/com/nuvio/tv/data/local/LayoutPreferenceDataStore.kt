@@ -246,7 +246,7 @@ class LayoutPreferenceDataStore @Inject constructor(
     }
 
     val heroSectionEnabled: Flow<Boolean> = profileFlow { prefs ->
-        prefs[heroSectionEnabledKey] ?: true
+        prefs[heroSectionEnabledKey] ?: false
     }
 
     val discoverLocation: Flow<DiscoverLocation> = profileFlow { prefs ->
@@ -282,7 +282,7 @@ class LayoutPreferenceDataStore @Inject constructor(
     }
 
     val focusedPosterBackdropExpandEnabled: Flow<Boolean> = profileFlow { prefs ->
-        prefs[focusedPosterBackdropExpandEnabledKey] ?: true
+        prefs[focusedPosterBackdropExpandEnabledKey] ?: false
     }
 
     val focusedPosterBackdropExpandDelaySeconds: Flow<Int> = profileFlow { prefs ->
@@ -348,7 +348,7 @@ class LayoutPreferenceDataStore @Inject constructor(
         factory.get(profileId, FEATURE).data.map { it[randomEpisodeEnabledKey] ?: false }
 
     val startupSplashEnabled: Flow<Boolean> = profileFlow { prefs ->
-        prefs[startupSplashEnabledKey] ?: true
+        prefs[startupSplashEnabledKey] ?: false
     }
 
     val alwaysShowLandscapeClearlogo: Flow<Boolean> = profileFlow { prefs ->
@@ -417,7 +417,7 @@ class LayoutPreferenceDataStore @Inject constructor(
     }
 
     val smoothBringIntoViewEnabled: Flow<Boolean> = profileFlow { prefs ->
-        prefs[smoothBringIntoViewEnabledKey] ?: true
+        prefs[smoothBringIntoViewEnabledKey] ?: false
     }
 
     val fastHorizontalNavigationEnabled: Flow<Boolean> = profileFlow { prefs ->

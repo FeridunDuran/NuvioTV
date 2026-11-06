@@ -86,6 +86,7 @@ class NuvioApplication : Application(), SingletonImageLoader.Factory {
         // Before super.onCreate(): Hilt creates injected services there, and the budget is read once.
         MemoryBudget.init(this)
         super.onCreate()
+        com.nuvio.tv.core.perf.TurboPerf.start(this)
         SentryInitializer.start(this, sentrySettingsDataStore)
         PluginRuntimeHooks.onApplicationCreate(this)
         androidTvChannelSyncService.start()
@@ -98,6 +99,14 @@ class NuvioApplication : Application(), SingletonImageLoader.Factory {
     }
 
     @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        com.nuvio.tv.core.perf.TurboPerf.mark("trim_memory_$level")
+        if (level >= android.content.ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW) {
+            SingletonImageLoader.get(this).memoryCache?.clear()
+        }
+    }
+
     override fun newImageLoader(context: android.content.Context): ImageLoader {
         val imageOkHttpClient by lazy {
             val imageDispatcher = okhttp3.Dispatcher().apply {
@@ -168,7 +177,10 @@ class NuvioApplication : Application(), SingletonImageLoader.Factory {
                 // such a TV the cache takes its share from that heap too.
                 val budgetHeapBytes = MemoryBudget.heapMb * 1024L * 1024L
                 val builder = MemoryCache.Builder()
-                if (budgetHeapBytes < Runtime.getRuntime().maxMemory()) {
+                if (totalRamMb <= 2048) {
+                    // Bitmaps are native memory on Android 8; the percent rule gave ~77 MB on 1.3 GB.
+                    builder.maxSizeBytes(32L * 1024 * 1024)
+                } else if (budgetHeapBytes < Runtime.getRuntime().maxMemory()) {
                     builder.maxSizeBytes((budgetHeapBytes * cachePercent).toLong())
                 } else {
                     builder.maxSizePercent(context, cachePercent)
@@ -185,7 +197,7 @@ class NuvioApplication : Application(), SingletonImageLoader.Factory {
             .precision(coil3.size.Precision.INEXACT)
             .allowHardware(false)
             .allowRgb565(imagePerformancePreferences.rgb565Enabled)
-            .bitmapFactoryMaxParallelism(4)
+            .bitmapFactoryMaxParallelism(2)
             .build()
     }
 }

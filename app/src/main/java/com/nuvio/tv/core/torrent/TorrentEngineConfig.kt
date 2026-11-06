@@ -15,6 +15,7 @@ internal fun buildTorrentEngineConfig(
     dataDirectory = stateDirectory,
     cacheDirectory = cacheDirectory,
     diskCacheCapacityBytes = diskCacheCapacityBytes,
+    memoryCacheCapacityBytes = 32L * 1024 * 1024,
     torrentProfile = when (torrentProfile) {
         TorrentProfile.SOFT -> NuvioTorrentProfile.Soft
         TorrentProfile.BALANCED -> NuvioTorrentProfile.Balanced

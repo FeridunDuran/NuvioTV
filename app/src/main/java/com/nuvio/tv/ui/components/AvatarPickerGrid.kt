@@ -351,7 +351,7 @@ private fun AvatarGridItem(
             AsyncImage(
                 model = ImageRequest.Builder(LocalContext.current)
                     .data(avatar.imageUrl)
-                    .crossfade(true)
+                    .crossfade(false)
                     .build(),
                 contentDescription = avatar.displayName,
                 modifier = Modifier.fillMaxSize(),

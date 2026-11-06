@@ -253,7 +253,7 @@ private fun CompanyLogoCard(
         company.logo?.let { logo ->
             ImageRequest.Builder(context)
                 .data(logo)
-                .crossfade(true)
+                .crossfade(false)
                 .size(width = logoWidthPx, height = logoHeightPx)
                 .build()
         }

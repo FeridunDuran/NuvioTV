@@ -257,7 +257,7 @@ private fun HeroCarouselSlide(
         item.logo?.let {
             ImageRequest.Builder(context)
                 .data(it)
-                .crossfade(true)
+                .crossfade(false)
                 .size(width = logoRequestWidthPx, height = logoRequestHeightPx)
                 .build()
         }

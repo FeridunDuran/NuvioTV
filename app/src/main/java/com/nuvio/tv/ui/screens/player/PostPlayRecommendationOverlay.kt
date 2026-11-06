@@ -534,7 +534,7 @@ private fun PostPlayRecommendationSummary(
                 AsyncImage(
                     model = ImageRequest.Builder(context)
                         .data(displayedRecommendation.logo)
-                        .crossfade(true)
+                        .crossfade(false)
                         .build(),
                     contentDescription = displayedRecommendation.title,
                     onError = { logoLoadFailed = true },

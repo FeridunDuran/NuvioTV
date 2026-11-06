@@ -407,7 +407,7 @@ private fun HeroSection(
                     AsyncImage(
                         model = ImageRequest.Builder(LocalContext.current)
                             .data(photo)
-                            .crossfade(true)
+                            .crossfade(false)
                             .size(
                                 width = with(LocalDensity.current) { 160.dp.roundToPx() },
                                 height = with(LocalDensity.current) { 240.dp.roundToPx() }

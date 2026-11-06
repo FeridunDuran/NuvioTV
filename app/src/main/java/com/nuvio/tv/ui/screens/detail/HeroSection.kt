@@ -139,7 +139,7 @@ fun HeroContentSection(
         meta.logo?.let { logo ->
             ImageRequest.Builder(context)
                 .data(logo)
-                .crossfade(true)
+                .crossfade(false)
                 .build()
         }
     }

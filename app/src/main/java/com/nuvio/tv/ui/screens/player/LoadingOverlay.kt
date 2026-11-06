@@ -91,7 +91,7 @@ fun LoadingOverlay(
             backdropUrl?.takeIf { it.isNotBlank() }?.let { url ->
                 ImageRequest.Builder(context)
                     .data(url)
-                    .crossfade(true)
+                    .crossfade(false)
                     .build()
             }
         }
@@ -99,7 +99,7 @@ fun LoadingOverlay(
             logoUrl?.takeIf { it.isNotBlank() }?.let { url ->
                 ImageRequest.Builder(context)
                     .data(url)
-                    .crossfade(true)
+                    .crossfade(false)
                     .build()
             }
         }

@@ -1215,7 +1215,7 @@ private fun ModernCarouselCard(
         imageUrl?.let {
             val builder = ImageRequest.Builder(context)
                 .data(it)
-                .crossfade(true)
+                .crossfade(false)
                 .memoryCacheKey("${it}_${requestWidthPx}x${requestHeightPx}_v$revalidationKey")
                 .size(width = requestWidthPx, height = requestHeightPx)
             if (revalidationKey > 0) {
@@ -1248,7 +1248,7 @@ private fun ModernCarouselCard(
         effectiveLogoUrl?.let {
             ImageRequest.Builder(context)
                 .data(it)
-                .crossfade(true)
+                .crossfade(false)
                 .memoryCacheKey("${it}_${maxLogoWidthPx}x${logoHeightPx}")
                 .size(width = maxLogoWidthPx, height = logoHeightPx)
                 .build()

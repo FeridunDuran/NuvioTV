@@ -398,7 +398,7 @@ private fun NextEpisodeThumbnail(
     val imageRequest = remember(context, thumbnail, blurred) {
         ImageRequest.Builder(context)
             .data(thumbnail)
-            .crossfade(true)
+            .crossfade(false)
             .apply {
                 if (blurred) transformations(BlurTransformation())
             }
