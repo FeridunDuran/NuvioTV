@@ -1,6 +1,9 @@
 package com.nuvio.tv.data.trailer
 
 import android.util.Log
+import android.content.Context
+import com.nuvio.tv.BuildConfig
+import dagger.hilt.android.qualifiers.ApplicationContext
 import com.nuvio.tv.core.player.TrailerVideoPolicy
 import com.nuvio.tv.core.tmdb.TmdbService
 import com.nuvio.tv.data.local.TmdbSettingsDataStore
@@ -29,9 +32,9 @@ private val YOUTUBE_VIDEO_ID_REGEX = Regex("^[a-zA-Z0-9_-]{11}$")
 private const val MAX_YOUTUBE_CANDIDATES = 3
 
 // Top level so the lambda doesn't capture the TrailerService instance from its constructor call.
-private fun trailerHeightCap(trailerSettingsDataStore: TrailerSettingsDataStore): suspend () -> Int = {
+private fun trailerHeightCap(trailerSettingsDataStore: TrailerSettingsDataStore, context: Context): suspend () -> Int = {
     val allow4k = runCatching { trailerSettingsDataStore.settings.first().allow4k }.getOrDefault(true)
-    TrailerVideoPolicy.maxTrailerVideoHeight(allow4k)
+    TrailerVideoPolicy.maxTrailerVideoHeight(allow4k, !TrailerVideoPolicy.default4kTrailers(context))
 }
 
 @Singleton
@@ -42,7 +45,8 @@ class TrailerService(
     private val tmdbSettingsDataStore: TmdbSettingsDataStore,
     private val tmdbService: TmdbService,
     private val clock: Clock = Clock.systemUTC(),
-    private val maxTrailerVideoHeight: suspend () -> Int = { Int.MAX_VALUE }
+    private val maxTrailerVideoHeight: suspend () -> Int = { Int.MAX_VALUE },
+    private val backendResolverEnabled: Boolean = true
 ) {
     @Inject
     constructor(
@@ -51,7 +55,8 @@ class TrailerService(
         inAppYouTubeExtractor: InAppYouTubeExtractor,
         tmdbSettingsDataStore: TmdbSettingsDataStore,
         tmdbService: TmdbService,
-        trailerSettingsDataStore: TrailerSettingsDataStore
+        trailerSettingsDataStore: TrailerSettingsDataStore,
+        @ApplicationContext context: Context
     ) : this(
         trailerApi = trailerApi,
         tmdbApi = tmdbApi,
@@ -59,7 +64,8 @@ class TrailerService(
         tmdbSettingsDataStore = tmdbSettingsDataStore,
         tmdbService = tmdbService,
         clock = Clock.systemUTC(),
-        maxTrailerVideoHeight = trailerHeightCap(trailerSettingsDataStore)
+        maxTrailerVideoHeight = trailerHeightCap(trailerSettingsDataStore, context),
+        backendResolverEnabled = isConfiguredTrailerBackend(BuildConfig.TRAILER_API_URL)
     )
 
     // Cache: "title|year|tmdbId|type|maxHeight" -> trailer playback source (NEGATIVE_CACHE sentinel for misses).
@@ -344,6 +350,12 @@ class TrailerService(
             return localSource
         }
 
+        // An unconfigured Retrofit uses localhost only as a construction placeholder.
+        // Skip it and let the caller try the next YouTube candidate.
+        if (!backendResolverEnabled) {
+            Log.i(TAG, "Backend trailer resolver unconfigured; trying remaining candidates")
+            return null
+        }
         // Fallback to remote trailer resolver if in-app extraction fails.
         Log.w(TAG, "In-app extraction failed, falling back to backend resolver for ${summarizeUrl(youtubeUrl)}")
         val response = trailerApi.getTrailer(youtubeUrl = youtubeUrl, title = title, year = year)
@@ -632,3 +644,10 @@ private fun parsePublishedAtEpoch(value: String?): Long {
     if (value.isNullOrBlank()) return Long.MIN_VALUE
     return runCatching { Instant.parse(value).toEpochMilli() }.getOrDefault(Long.MIN_VALUE)
 }
+
+internal fun isConfiguredTrailerBackend(url: String): Boolean = runCatching {
+    val uri = URI(url.trim())
+    val host = uri.host?.lowercase() ?: return@runCatching false
+    uri.scheme == "https" && host != "localhost" && host != "::1" && host != "[::1]" &&
+        !host.startsWith("127.") && host != "0.0.0.0" && uri.userInfo == null
+}.getOrDefault(false)

@@ -402,7 +402,7 @@ class InAppYouTubeExtractor internal constructor(
 
         // Use cached config instead of fetching watch page every time
         val config = ensureWatchConfig(forceRefresh = forceRefreshConfig)
-        Log.d(TAG, "Using config: apiKey=${config.apiKey.take(10)}... visitor=${!config.visitorData.isNullOrBlank()}")
+        Log.d(TAG, "Using YouTube client config; visitor=${!config.visitorData.isNullOrBlank()}")
 
         val streams = ClientStreams()
         val pendingClients = CLIENTS.iterator()

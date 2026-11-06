@@ -34,6 +34,19 @@ class TrailerServiceYouTubeSessionCacheTest {
     }
 
     @Test
+    fun `unconfigured backend is skipped when local extraction fails`() = runTest {
+        val trailerApi = mockk<TrailerApi>()
+        val extractor = mockk<InAppYouTubeExtractor>()
+        val service = TrailerService(
+            trailerApi, mockk<TmdbApi>(), extractor, mockk<TmdbSettingsDataStore>(), mockk<TmdbService>(),
+            backendResolverEnabled = false
+        )
+        coEvery { extractor.extractPlaybackSource(any()) } returns null
+        assertNull(service.getTrailerPlaybackSourceFromYouTubeUrl("https://www.youtube.com/watch?v=dQw4w9WgXcQ"))
+        coVerify(exactly = 0) { trailerApi.getTrailer(any(), any(), any()) }
+    }
+
+    @Test
     fun `reuses successful playback source for same youtube key within session`() = runTest {
         val trailerApi = mockk<TrailerApi>()
         val tmdbApi = mockk<TmdbApi>()
