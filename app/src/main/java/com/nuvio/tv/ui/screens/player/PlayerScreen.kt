@@ -2080,7 +2080,9 @@ fun PlayerScreen(
                 .then(playerControlsDim)
         )
 
-        SubtitleSelectionOverlay(
+        // Personal build: compose the subtitle menu only while it is open. Kept composed while
+        // hidden, it rebuilt every list (100+ subtitles) on close, which made Back feel laggy.
+        if (uiState.showSubtitleOverlay) SubtitleSelectionOverlay(
             visible = uiState.showSubtitleOverlay,
             internalTracks = uiState.serverSubtitleTracks.ifEmpty { uiState.subtitleTracks },
             selectedInternalIndex = if (uiState.serverSubtitleTracks.isEmpty()) {
