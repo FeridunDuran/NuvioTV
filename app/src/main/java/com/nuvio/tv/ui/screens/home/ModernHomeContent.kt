@@ -1068,13 +1068,13 @@ fun ModernHomeContent(
                 with(localDensity) {
                     if (fullScreenBackdrop) screenWidth.roundToPx()
                     else (screenWidth * MODERN_HERO_MEDIA_WIDTH_FRACTION).roundToPx()
-                }.coerceAtLeast(1)
+                }.let { it / 2 }.coerceAtLeast(1) // Personal build: decode the backdrop at half size (4x fewer pixels)
             }
             val heroMediaHeightPx = remember(heroBackdropHeight, screenHeight, localDensity, fullScreenBackdrop) {
                 with(localDensity) {
                     if (fullScreenBackdrop) screenHeight.roundToPx()
                     else heroBackdropHeight.roundToPx()
-                }.coerceAtLeast(1)
+                }.let { it / 2 }.coerceAtLeast(1)
             }
 
             val heroMediaModifier = remember(heroBackdropHeight, screenHeight, fullScreenBackdrop) {
