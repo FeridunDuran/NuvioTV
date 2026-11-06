@@ -10,6 +10,11 @@ import org.junit.Test
 import java.util.Base64
 
 class PlayerMediaSourceFactoryTest {
+    @Test fun `pixeldrain matroska content type without x prefix is recognized`() {
+        assertEquals(MimeTypes.VIDEO_MATROSKA,
+            PlayerMediaSourceFactory.normalizeMimeType("video/matroska"))
+    }
+
 
     @Test
     fun `media segment 404 with an alternative prefers another HLS track`() {

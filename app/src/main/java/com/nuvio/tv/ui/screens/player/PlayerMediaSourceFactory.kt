@@ -878,6 +878,8 @@ internal class PlayerMediaSourceFactory(private val context: Context) {
                 "audio/webm" -> MimeTypes.VIDEO_WEBM
 
                 "video/x-matroska",
+                "video/matroska",
+                "audio/matroska",
                 "audio/x-matroska",
                 "video/mkv",
                 "audio/mkv" -> MimeTypes.VIDEO_MATROSKA

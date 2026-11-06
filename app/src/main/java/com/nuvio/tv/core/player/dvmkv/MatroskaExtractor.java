@@ -2681,7 +2681,13 @@ public class MatroskaExtractor implements Extractor {
     if (seekForTracks) {
       seekForTracks = false;
       seekedForTracks = true;
-      seekPositionAfterReadingTracks = currentPosition;
+      // A trailing SeekHead may reveal Tracks only after we left the first Cluster.
+      // Return to that Cluster after Tracks, not to EOF after the trailing SeekHead.
+      seekPositionAfterReadingTracks =
+          seekPositionAfterBuildingCues != C.INDEX_UNSET
+              ? seekPositionAfterBuildingCues
+              : currentPosition;
+      seekPositionAfterBuildingCues = C.INDEX_UNSET;
       seekPosition.position = tracksContentPosition;
       return true;
     }
@@ -2745,7 +2751,11 @@ public class MatroskaExtractor implements Extractor {
     if (sentSeekMap || !seekForCuesEnabled || seekPositionAfterBuildingCues == C.INDEX_UNSET) {
       return;
     }
-    if (cuesContentPosition != C.INDEX_UNSET) {
+    if (tracks.size() == 0 && !seekedForTracks && tracksContentPosition != C.INDEX_UNSET) {
+      // Prefer newly discovered Tracks to Cues. Otherwise end(Cues) publishes an
+      // empty track set and ExoPlayer reports READY without any audio/video.
+      seekForTracks = true;
+    } else if (cuesContentPosition != C.INDEX_UNSET) {
       seekForCues = true;
     } else if (shouldFollowNestedSeekHead(
         seekForCuesEnabled, cuesContentPosition, pendingSeekHeadPosition, followedSeekHeadCount)) {
@@ -2853,7 +2863,7 @@ public class MatroskaExtractor implements Extractor {
   }
 
   private void maybeEndTracks() {
-    if (!pendingEndTracks) {
+    if (!pendingEndTracks || tracks.size() == 0) {
       return;
     }
     // Never gate endTracks() on waitingForDtsAnalysis: refining the DTS mime requires

@@ -65,7 +65,7 @@ internal class DolbyVisionExtractorsFactory(
         // native-DV boxes (policy OFF — most likely to bitstream) never got the
         // sniff and negotiated core DTS for DTS-HD content. With an inactive
         // config, shouldTransform() is false so non-DV samples pass through.
-        if (extractor.javaClass.name == STOCK_MATROSKA_EXTRACTOR) {
+        if (extractor is androidx.media3.extractor.mkv.MatroskaExtractor) {
             return DvMatroskaExtractor(
                 DefaultSubtitleParserFactory(),
                 /* flags= */ 0,
@@ -82,19 +82,15 @@ internal class DolbyVisionExtractorsFactory(
     }
 
     private fun nalFormatFor(extractor: Extractor): NalFormat? {
-        val name = extractor.javaClass.name
-        return when {
+        return when (extractor) {
             // RPU is in-band in the sample for these containers, so reachable here.
-            name.contains("FragmentedMp4Extractor") -> NalFormat.LENGTH_DELIMITED
-            name.contains("Mp4Extractor") -> NalFormat.LENGTH_DELIMITED
-            name.contains("TsExtractor") -> NalFormat.ANNEX_B
+            is androidx.media3.extractor.mp4.FragmentedMp4Extractor -> NalFormat.LENGTH_DELIMITED
+            is androidx.media3.extractor.mp4.Mp4Extractor -> NalFormat.LENGTH_DELIMITED
+            is androidx.media3.extractor.ts.TsExtractor -> NalFormat.ANNEX_B
             else -> null
         }
     }
 
-    private companion object {
-        const val STOCK_MATROSKA_EXTRACTOR = "androidx.media3.extractor.mkv.MatroskaExtractor"
-    }
 }
 
 /** How HEVC NAL units are framed in the sample stream for a given container. */
