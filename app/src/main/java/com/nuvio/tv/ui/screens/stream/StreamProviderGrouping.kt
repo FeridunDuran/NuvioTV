@@ -23,7 +23,11 @@ private val PROMO_PATTERN = Regex(
         "add to (your )?library|telegram|follow us|rate (this|us)"
 )
 
-private fun isPromoEntry(stream: Stream): Boolean {
+private val promoCache = java.util.Collections.synchronizedMap(java.util.WeakHashMap<Stream, Boolean>())
+
+private fun isPromoEntry(stream: Stream): Boolean = promoCache.getOrPut(stream) { computeIsPromo(stream) }
+
+private fun computeIsPromo(stream: Stream): Boolean {
     val hasVideo = !stream.url.isNullOrBlank() || !stream.infoHash.isNullOrBlank() ||
         !stream.ytId.isNullOrBlank() || stream.clientResolve != null || stream.serverTarget != null ||
         stream.torrentMagnetUri() != null
@@ -62,5 +66,14 @@ private fun seedCount(stream: Stream): Int {
     return -1
 }
 
+// Keys are computed once per stream (not inside the comparator) and cached by identity, because
+// this runs again every time an add-on delivers results while the sources screen is open.
+private val orderKeyCache = java.util.Collections.synchronizedMap(java.util.WeakHashMap<Stream, Long>())
+
+private fun orderKey(stream: Stream): Long =
+    orderKeyCache.getOrPut(stream) {
+        resolutionTier(stream).toLong() * 10_000_000_000L - seedCount(stream).coerceAtLeast(-1).toLong()
+    }
+
 private fun orderForWeakTv(streams: List<Stream>): List<Stream> =
-    streams.sortedWith(compareBy<Stream> { resolutionTier(it) }.thenByDescending { seedCount(it) })
+    if (streams.size < 2) streams else streams.sortedBy(::orderKey)
