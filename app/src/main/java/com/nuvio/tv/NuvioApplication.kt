@@ -87,7 +87,7 @@ class NuvioApplication : Application(), SingletonImageLoader.Factory {
         MemoryBudget.init(this)
         super.onCreate()
         com.nuvio.tv.core.perf.TurboPerf.start(this)
-        SentryInitializer.start(this, sentrySettingsDataStore)
+        // Personal build: Sentry disabled entirely.
         PluginRuntimeHooks.onApplicationCreate(this)
         androidTvChannelSyncService.start()
         serverUserStateProjection.start()
