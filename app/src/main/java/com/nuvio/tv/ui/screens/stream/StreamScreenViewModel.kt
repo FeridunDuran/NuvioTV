@@ -56,6 +56,10 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -543,7 +547,10 @@ class StreamScreenViewModel @Inject constructor(
                 contentId?.let { bingeGroupCacheDataStore.getInfoHash(it) }
             } else null
 
-            fun applySuccess(addonStreamGroups: List<AddonStreams>, isAllLoaded: Boolean) {
+            val presentationMutex = Mutex()
+            val presentationStartedAtMs = android.os.SystemClock.uptimeMillis()
+            var firstSourcesMarked = false
+            suspend fun applySuccess(addonStreamGroups: List<AddonStreams>, isAllLoaded: Boolean) = presentationMutex.withLock {
                 val orderedAddonStreams = StreamAutoPlaySelector.orderAddonStreams(
                     addonStreamGroups,
                     installedAddonOrder,
@@ -659,19 +666,22 @@ class StreamScreenViewModel @Inject constructor(
                 }
 
                 val currentFilter = _uiState.value.selectedAddonFilter
-                val fullFiltered = groupStreamsByProvider(if (currentFilter == null) {
-                    allStreams
-                } else {
-                    allStreams.filter { it.addonName == currentFilter }
-                })
-                streamFilterFullList = fullFiltered
-                val currentPageSize = _uiState.value.filteredStreams.size
-                val isFirstLoad = currentPageSize == 0
-                val paginatedStreams = if (isFirstLoad && fullFiltered.size > STREAM_FILTER_PAGE_SIZE) {
-                    fullFiltered.subList(0, STREAM_FILTER_PAGE_SIZE)
-                } else {
-                    fullFiltered
+                val fullFiltered = withContext(Dispatchers.Default) {
+                    groupStreamsByProvider(if (currentFilter == null) {
+                        allStreams
+                    } else {
+                        allStreams.filter { it.addonName == currentFilter }
+                    })
                 }
+                val latestFilter = _uiState.value.selectedAddonFilter
+                val visibleFullList = if (latestFilter == currentFilter) fullFiltered else {
+                    groupStreamsByProvider(allStreams.filter { latestFilter == null || it.addonName == latestFilter })
+                }
+                streamFilterFullList = visibleFullList
+                val pageEnd = streamPresentationPageEnd(
+                    _uiState.value.filteredStreams.size, visibleFullList.size
+                )
+                val paginatedStreams = visibleFullList.take(pageEnd)
 
                 updateUiStateIfChanged {
                     it.copy(
@@ -697,6 +707,13 @@ class StreamScreenViewModel @Inject constructor(
                             false
                         }
                     )
+                }
+                if (!firstSourcesMarked && allStreams.isNotEmpty()) {
+                    firstSourcesMarked = true
+                    Log.i("TurboPerf", "event=stream_first_results elapsedMs=${android.os.SystemClock.uptimeMillis() - presentationStartedAtMs}")
+                }
+                if (isAllLoaded) {
+                    Log.i("TurboPerf", "event=stream_results_ready elapsedMs=${android.os.SystemClock.uptimeMillis() - presentationStartedAtMs}")
                 }
                 scheduleStreamBadgePresentation(mergedAddonStreams)
             }

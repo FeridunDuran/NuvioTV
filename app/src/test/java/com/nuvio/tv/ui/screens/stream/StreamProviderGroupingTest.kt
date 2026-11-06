@@ -6,6 +6,14 @@ import org.junit.Assert.assertNull
 import org.junit.Test
 
 class StreamProviderGroupingTest {
+    @Test fun `late results preserve loaded pages and shrinking lists remain bounded`() {
+        assertEquals(100, streamPresentationPageEnd(0, 350))
+        assertEquals(100, streamPresentationPageEnd(100, 500))
+        assertEquals(200, streamPresentationPageEnd(200, 500))
+        assertEquals(50, streamPresentationPageEnd(200, 50))
+        assertEquals(0, streamPresentationPageEnd(100, 0))
+    }
+
     private fun stream(provider: String?, name: String, addon: String = "Repository") = Stream(
         name = name, title = null, description = null, url = name, ytId = null,
         infoHash = null, fileIdx = null, externalUrl = null, behaviorHints = null,

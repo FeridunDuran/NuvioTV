@@ -66,7 +66,7 @@ private fun seedCount(stream: Stream): Int {
     return -1
 }
 
-// Keys are computed once per stream (not inside the comparator) and cached by identity, because
+// Keys are computed once per stream (not inside the comparator) and cached by equality, because
 // this runs again every time an add-on delivers results while the sources screen is open.
 private val orderKeyCache = java.util.Collections.synchronizedMap(java.util.WeakHashMap<Stream, Long>())
 
@@ -77,3 +77,7 @@ private fun orderKey(stream: Stream): Long =
 
 private fun orderForWeakTv(streams: List<Stream>): List<Stream> =
     if (streams.size < 2) streams else streams.sortedBy(::orderKey)
+
+// Preserve the user's expanded page when late add-on responses replace the list.
+internal fun streamPresentationPageEnd(currentSize: Int, totalSize: Int): Int =
+    currentSize.coerceAtLeast(100).coerceAtMost(totalSize)
