@@ -127,7 +127,7 @@ private fun PlaybackNavHost(
             if (isStreamToPlayer(from, to) && isAutoPlayNav) {
                 EnterTransition.None
             } else {
-                fadeIn(animationSpec = tween(NuvioMotion.tokens.durations.medium))
+                fadeIn(animationSpec = tween(SCREEN_TRANSITION_MS))
             }
         },
         exitTransition = {
@@ -139,7 +139,7 @@ private fun PlaybackNavHost(
             if (isStreamToPlayer(from, to) && isAutoPlayNav) {
                 ExitTransition.None
             } else {
-                fadeOut(animationSpec = tween(NuvioMotion.tokens.durations.medium))
+                fadeOut(animationSpec = tween(SCREEN_TRANSITION_MS))
             }
         },
         popEnterTransition = {
@@ -151,7 +151,7 @@ private fun PlaybackNavHost(
             if (isPlayerToStream(from, to) && isAutoPlayNav) {
                 EnterTransition.None
             } else {
-                fadeIn(animationSpec = tween(NuvioMotion.tokens.durations.medium))
+                fadeIn(animationSpec = tween(SCREEN_TRANSITION_MS))
             }
         },
         popExitTransition = {
@@ -163,7 +163,7 @@ private fun PlaybackNavHost(
             if (isPlayerToStream(from, to) && isAutoPlayNav) {
                 ExitTransition.None
             } else {
-                fadeOut(animationSpec = tween(NuvioMotion.tokens.durations.medium))
+                fadeOut(animationSpec = tween(SCREEN_TRANSITION_MS))
             }
         }
     ) {
@@ -1531,3 +1531,6 @@ private fun PlaybackNavHost(
         }
     }
 }
+
+// Personal build: screen transitions were 350 ms; 80 ms keeps a hint of fade but Back/Enter feel instant.
+private const val SCREEN_TRANSITION_MS = 80
