@@ -56,3 +56,17 @@ JankStats aşağıdaki sayıları yalnız gecikmiş kareler için kaydediyor; p5
 - Fragmanlar: bir YouTube extraction başarısızlığı sonrası backend resolver localhost:443'e gidip ECONNREFUSED alıyor. NetworkModule Trailer retrofit boş TRAILER_API_URL için localhost fallback kullanıyor. Bu bazı fragmanları engeller; tüm oynatma kaynaklarının yavaşlığı demek değildir.
 - PSS yaklaşık 236 MB. GC sonrası heap tekrar düşüyor; bu kayıt sızıntı kanıtı değil. En uzun görünen GC total 1,45 sn iken stop pause 2,782 ms; total GC süresi UI donması gibi raporlanmadı.
 - Salt okunur kontrol; uygulama durdurulmadı, sayaçlar sıfırlanmadı, debug örneklemesi açılmadı, kod değiştirilmedi.
+
+## Kalan jank düzeltmesi — derleme aşaması
+- Somut konfigürasyon kanıtı: TV MemoryBudget heapMb=512/isLowRamTier=false, TrailerPlayerPool targetBufferMb=100. Genel heap tabanlı tier politikasına dokunulmadan fragman tier'ı fiziksel RAM'e bağlandı; bu TV'de 720p ve 12MB.
+- TextureView fragmanındaki GPU kopyalama ve ana thread'de periyodik getBitmap readback kaldırıldı (düşük fiziksel RAM tier'da SurfaceView; yalnız fragman fade kapalı). Hero/kart slaytı ve fragmanlar korunur. Android 26, SurfaceView hareket senkronizasyonunun desteklendiği API24+ sınıfındadır.
+- Tekrarlanan stop/clear no-op hale getirildi; stop ve view detach süreleri içerik/URL yazmadan ölçülür. Surface/codec kapanışının kesin eski maliyeti ölçülmedi; eski loglar bu yol ile jank korelasyonu gösteriyor.
+- Backend resolver boş/loopback ise yerel çözümleme sonrası localhost'a istek yapılmaz, sıradaki aday denenir. Resmi 1.0.0 paketten görülen eski trailer2 backend probe URLError verdi; rastgele sunucu adresi yazılmadı. Bu, her YouTube kaynağının çözüleceği garantisi değildir.
+- Yeni yerel testler: yapılandırılmamış backend'e sıfır istek ve fiziksel RAM trailer cap'i. Build/test/TV sonucu tamamlanınca eklenecek.
+
+## Fragman düzeltmesi — TV teslimi ve sınırlar
+- Release Build Successful (16 dk 37 sn); 35 seçili trailer/YouTube unit testi, 0 hata. Yeni APK SHA256 d23a6c3b3d27454ad004d9dbf5cd87d283eed2354d09e27a699c0b797ff1227c. TV install -r ve speed Success (116880 ms), ayarlar korundu.
+- Aynı filmin detayına deep link açıldı; PID21537. Çözücü maxHeight=720 / gerçek1280x550 AVC ve havuz targetBufferMb=12 doğrulandı; görüntü görsel olarak kontrol edildi.
+- İki view detach ölçümü: 16:52:44.059 ve 16:55:17.694, her ikisi 0 ms (ms çözünürlüğü). Bunlar tüm kapanış süresi değildir; tracer yalnız view.player=null/keepScreenOn temizliği etrafındadır. Root-thread GPU readback düşük RAM tier'da artık çalışmıyor.
+- Yeni pencerede localhost bağlantı hatası, fatal crash, playback error yok. Cold startup hâlâ 85/42 skipped frame kaydetti; sonrasında gözlem penceresinde yeni büyük Choreographer olayı yok. Soğuk açılış dahil son58render p50 46,7/p90 167,9/max1202,1 ms; eski warm gezinmeyle kıyaslanamaz. Tüm arayüz takılmalarının giderildiği iddia edilmedi.
+- Yerel commitler: cef62b4cd ve 079272252. Eski çalışan APK Temp/nuvio-before-trailer-fix.apk olarak saklandı. Oynatma sırasında kullanıcıya tuş gönderilmedi.
