@@ -48,3 +48,11 @@ JankStats aşağıdaki sayıları yalnız gecikmiş kareler için kaydediyor; p5
 - Plavio macdn MP4: 2 track grubu, AVC donanım decoder init 188 ms; player_open -> ilk kare 4861 ms. Önceki kısa/sonuçsuz denemenin artık oynadığı doğrulandı.
 - İlk kaynak sonucu: 267/258/198 ms. Tüm sonuçlar: 3092/301/200 ms; farklı/cache etkili oturumlar, karşılaştırmalı performans testi sayılmaz.
 - Fatal crash ve Trakt progress fetch hatası: 0. Kullanıcının olumlu geri bildirimi var; hesap tokenları/oturum bilgileri okunmadı.
+
+## Kalan arayüz takılması — 16:22 sonrası inceleme
+- Kümülatif gfxinfo: 2630 render karesi, %43,19 jank; p50 17/p90 77/p95 125/p99 250 ms. Slow UI thread 718, slow draw commands 711, bitmap uploads 83; sayaçlar örtüşebilir, farklı kullanım önceki sürümle kıyaslanamaz.
+- Son saklanan 120 gerçek render karesi (Flags=0): p50 39,5 ms, p90 86,3 ms, max 151,3 ms; 9 kare >100 ms.
+- 16:14:14.982 / 16:22:21.249: Choreographer 50/52 skipped frame. 60 Hz kabulüyle yaklaşık 833/867 ms ölçeği; bu doğrudan ölçülmüş tek kare süresi değildir. Detay hero kompozisyonunu izleyen codec kaynak iadesi ve surface teardown ile çakışıyor. Kapanış/geçiş yolu güçlü aday; trace süresi olmadan kök neden sayılmaz.
+- Fragmanlar: bir YouTube extraction başarısızlığı sonrası backend resolver localhost:443'e gidip ECONNREFUSED alıyor. NetworkModule Trailer retrofit boş TRAILER_API_URL için localhost fallback kullanıyor. Bu bazı fragmanları engeller; tüm oynatma kaynaklarının yavaşlığı demek değildir.
+- PSS yaklaşık 236 MB. GC sonrası heap tekrar düşüyor; bu kayıt sızıntı kanıtı değil. En uzun görünen GC total 1,45 sn iken stop pause 2,782 ms; total GC süresi UI donması gibi raporlanmadı.
+- Salt okunur kontrol; uygulama durdurulmadı, sayaçlar sıfırlanmadı, debug örneklemesi açılmadı, kod değiştirilmedi.
