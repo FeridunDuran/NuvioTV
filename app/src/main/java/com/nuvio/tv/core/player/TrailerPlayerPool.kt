@@ -50,10 +50,12 @@ class TrailerPlayerPool @Inject constructor(
 
         // A trailer plays on top of the home UI and its image caches, so it gets a small byte cap
         // rather than Media3's default (~144 MB for video + audio). Low-RAM sticks get the smallest.
-        private const val LOW_RAM_TRAILER_BUFFER_MB = 48
+        private const val LOW_RAM_TRAILER_BUFFER_MB = 12
         private const val TRAILER_BUFFER_MB = 100
     }
 
+    // largeHeap can be 512 MB even on a 1.3 GB TV: heap size alone misclassifies it.
+    private val constrainedDevice = !TrailerVideoPolicy.default4kTrailers(context)
     private var _player: ExoPlayer? = null
     private val yielded = AtomicBoolean(false)
     private val released = AtomicBoolean(false)
@@ -112,7 +114,7 @@ class TrailerPlayerPool @Inject constructor(
 
     // Caps HLS variants; adaptive YouTube streams are already capped by the extractor.
     private fun applyVideoSizeCap(player: ExoPlayer) {
-        val maxHeight = TrailerVideoPolicy.maxTrailerVideoHeight(cachedAllow4k)
+        val maxHeight = TrailerVideoPolicy.maxTrailerVideoHeight(cachedAllow4k, constrainedDevice)
         if (appliedMaxHeight == maxHeight) return
         val maxWidth = if (maxHeight == Int.MAX_VALUE) Int.MAX_VALUE else maxHeight * 16 / 9
         player.trackSelectionParameters = player.trackSelectionParameters
@@ -128,11 +130,15 @@ class TrailerPlayerPool @Inject constructor(
      */
     fun stop() {
         _player?.let { player ->
+            val started = android.os.SystemClock.uptimeMillis()
             runCatching {
                 player.playWhenReady = false
-                player.stop()
-                player.clearMediaItems()
+                if (player.playbackState != Player.STATE_IDLE || player.mediaItemCount != 0) {
+                    player.stop()
+                    player.clearMediaItems()
+                }
             }
+            Log.i("TurboPerf", "event=trailer_stop elapsedMs=${android.os.SystemClock.uptimeMillis() - started}")
         }
         _isTrailerPlaying.value = false
     }
@@ -223,7 +229,7 @@ class TrailerPlayerPool @Inject constructor(
             .setTrackSelector(trackSelector)
             .setBandwidthMeter(
                 DefaultBandwidthMeter.Builder(context)
-                    .setInitialBitrateEstimate(50_000_000L) // 50 Mbps – force highest HLS variant from start
+                    .setInitialBitrateEstimate(if (constrainedDevice) 3_000_000L else 50_000_000L) // 50 Mbps – force highest HLS variant from start
                     .build()
             )
             .setVideoChangeFrameRateStrategy(C.VIDEO_CHANGE_FRAME_RATE_STRATEGY_ONLY_IF_SEAMLESS)
@@ -240,7 +246,7 @@ class TrailerPlayerPool @Inject constructor(
 
     /** Trailer cap for this device tier, lowered further when the user set a smaller Target Buffer Size. */
     private fun trailerTargetBufferMb(settings: PlayerSettings?): Int {
-        val tierCapMb = if (MemoryBudget.isLowRamTier) LOW_RAM_TRAILER_BUFFER_MB else TRAILER_BUFFER_MB
+        val tierCapMb = if (constrainedDevice || MemoryBudget.isLowRamTier) LOW_RAM_TRAILER_BUFFER_MB else TRAILER_BUFFER_MB
         val userTargetMb = settings
             ?.takeIf { it.bufferEngineEnabled && !it.bufferBudgetManaged }
             ?.let { MemoryBudget.effectiveBufferMb(it.bufferSettings.targetBufferSizeMb) }

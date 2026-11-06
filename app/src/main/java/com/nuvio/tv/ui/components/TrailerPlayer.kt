@@ -68,6 +68,9 @@ fun TrailerPlayer(
     trailerPlayerPool: TrailerPlayerPool? = null
 ) {
     val context = LocalContext.current
+    val constrainedDevice = remember(context) {
+        !com.nuvio.tv.core.player.TrailerVideoPolicy.default4kTrailers(context)
+    }
     val lifecycleOwner = LocalLifecycleOwner.current
     val activityLifecycleOwner = remember(context) { context as? androidx.lifecycle.LifecycleOwner ?: lifecycleOwner }
     val currentIsPlaying by rememberUpdatedState(isPlaying)
@@ -156,7 +159,9 @@ fun TrailerPlayer(
 
     LaunchedEffect(autoCropLetterbox, hasRenderedFirstFrame, trailerPlayer) {
         letterboxZoom = 1f
-        if (!autoCropLetterbox || !hasRenderedFirstFrame) return@LaunchedEffect
+        // TextureView.getBitmap is a synchronous GPU readback on the main thread.
+        // Low-memory TVs use a SurfaceView and regular crop instead.
+        if (constrainedDevice || !autoCropLetterbox || !hasRenderedFirstFrame) return@LaunchedEffect
         val player = trailerPlayer ?: return@LaunchedEffect
         val tracker = LetterboxTracker()
         val sampler = LetterboxSampler()
@@ -248,8 +253,7 @@ fun TrailerPlayer(
                 Lifecycle.Event.ON_STOP -> {
                     player.playWhenReady = false
                     player.pause()
-                    player.stop()
-                    player.clearMediaItems()
+                    resolvedPool?.stop()
                 }
                 // Do NOT release on destroy — the pool owns the lifecycle.
                 else -> Unit
@@ -268,12 +272,15 @@ fun TrailerPlayer(
     if (trailerPlayer != null) {
         AnimatedVisibility(
             visible = isPlaying,
-            enter = enter,
-            exit = exit
+            enter = if (constrainedDevice) EnterTransition.None else enter,
+            exit = if (constrainedDevice) ExitTransition.None else exit
         ) {
             AndroidView(
                 factory = { ctx ->
-                    (LayoutInflater.from(ctx).inflate(R.layout.trailer_player_view, null) as PlayerView).apply {
+                    (LayoutInflater.from(ctx).inflate(
+                        if (constrainedDevice) R.layout.trailer_player_view_surface else R.layout.trailer_player_view,
+                        null
+                    ) as PlayerView).apply {
                         playerViewRef.value = this
                         player = trailerPlayer
                         isFocusable = false
@@ -301,14 +308,16 @@ fun TrailerPlayer(
                     }
                 },
                 onRelease = { view ->
+                    val started = android.os.SystemClock.uptimeMillis()
                     playerViewRef.value = null
                     view.player = null
                     view.keepScreenOn = false
+                    android.util.Log.i("TurboPerf", "event=trailer_detach elapsedMs=${android.os.SystemClock.uptimeMillis() - started}")
                 },
                 modifier = modifier
                     .clipToBounds()
                     .graphicsLayer {
-                        alpha = playerAlphaState.value
+                        alpha = if (constrainedDevice) 1f else playerAlphaState.value
                         scaleX = zoomScale * letterboxZoomState.value
                         scaleY = zoomScale * letterboxZoomState.value
                     }
