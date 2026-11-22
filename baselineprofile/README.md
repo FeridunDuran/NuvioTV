@@ -75,6 +75,14 @@ run lists the outcome of every test.
 
 ## Reading the numbers
 
+- The cold-start pair runs five iterations per mode and reports median time to
+  initial display. The profile-enabled startup test requires successful Baseline
+  Profile installation. The comparison uses the same APK and launch setup with
+  `CompilationMode.None()`. APK layout optimizations remain in both runs.
+- Open the Macrobenchmark iteration traces in Android Studio or Perfetto to
+  inspect individual cold launches and frame timing. On the Philips API 26 TV,
+  use supported system tracing categories and `gfxinfo` for device measurements.
+
 - **The table is bimodal.** Every journey appears twice: once with the baseline profile applied
   (`*WithBaselineProfile`) and once without any compilation (`*WithoutCompilation`). The unit of
   comparison is the *vertical pair* of one journey, never a single row: the question the gate
@@ -88,8 +96,8 @@ run lists the outcome of every test.
 - **The gate is human-in-the-loop.** There is no automated threshold in the repository. The
   macrobenchmark produces the numbers, a human compares the two columns and decides. The tooling
   only guards the *plumbing*: the extraction fails when the run produced no benchmark output at
-  all, and it prints a warning when the with-profile column lands within 10% of the
-  without-compilation column, which is the signature of a silent profile fallback
+  all, and for frame timing it prints a warning when the with-profile column lands within 10% of the
+  without-compilation column or exceeds it. This can flag silent profile fallback
   (`BaselineProfileMode.UseIfAvailable` measures the uncompiled app when no profile is
   installed for the package).
 - **A degraded journey is not a number.** A journey that could not reach its target fails the
@@ -146,3 +154,34 @@ Deferred, not implemented yet:
 - **Marker cleanup and journey reordering.** The markers of the journeys and the order of the
   journeys of the generator change the collected profile, so they have to land together with a
   profile regeneration to keep the profile and the guard rails comparable.
+
+## Home content checks on API 26
+
+Run the readiness and artwork checks on the target TV after changing startup,
+catalog scheduling, Hero presentation, or image loading:
+
+```sh
+python scripts/home_readiness.py --observe 45 --runs 2
+python scripts/check_hero_artwork.py --row "catalog title"
+```
+
+Both commands accept `--adb` and `--serial`. The artwork check uses Pillow
+and assumes a foreground Modern Home screen. It reports the visual difference
+in the backdrop area across three focused cards without saving screenshots.
+Run it on at least one ordinary catalog and one custom or watchlist catalog.
+Check the focused card fingerprints change before interpreting the visual delta.
+
+The readiness report separates the first activity window, addon successes and
+error codes, published catalog row counts, and completed Hero artwork requests.
+Record the same metrics before and after a change under the same ART mode and
+profile. A visible window does not establish that content is ready. A missing
+Hero or catalog event in the observation window still needs investigation.
+
+For source readiness on the same TV, use a movie with available sources and run
+both prewarm modes. The script times Play to the first source-list pre-draw and
+reports when autoplay bypasses the source list.
+
+```sh
+python scripts/measure_source_readiness.py --movie <imdb-id> --prewarm off
+python scripts/measure_source_readiness.py --movie <imdb-id> --prewarm on
+```

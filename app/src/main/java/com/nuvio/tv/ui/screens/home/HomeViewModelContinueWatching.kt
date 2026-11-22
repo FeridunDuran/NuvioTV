@@ -13,6 +13,7 @@ import com.nuvio.tv.domain.model.ContentType
 import com.nuvio.tv.domain.model.Meta
 import com.nuvio.tv.domain.model.Video
 import com.nuvio.tv.domain.model.WatchProgress
+import com.nuvio.tv.domain.model.WatchedItem
 import com.nuvio.tv.domain.model.normalizeLanguageCode
 import com.nuvio.tv.domain.model.countryToLanguageCode
 import com.nuvio.tv.ui.util.parseEpisodeReleaseDate
@@ -70,7 +71,7 @@ private data class ContinueWatchingSettingsSnapshot(
     val showUnairedNextUp: Boolean,
     val nextUpFromFurthestEpisode: Boolean,
     val continueWatchingSortMode: ContinueWatchingSortMode,
-    val watchedItemsVersion: Int,  // triggers re-evaluation when watched items change
+    val watchedItems: List<WatchedItem>,
     val hasLoadedRemoteProgress: Boolean
 )
 
@@ -300,9 +301,9 @@ internal fun HomeViewModel.loadContinueWatchingPipeline() {
             ) { daysCap, dismissedNextUp, showUnairedNextUp, nextUpFromFurthest, sortMode ->
                 arrayOf(daysCap, dismissedNextUp, showUnairedNextUp, nextUpFromFurthest, sortMode)
             },
-            watchProgressRepository.watchedItems.map { it.size },
+            watchProgressRepository.watchedItems,
             cwPipelineRefreshTrigger
-        ) { progressSnapshot, settingsSnapshot, watchedItemsSize, _ ->
+        ) { progressSnapshot, settingsSnapshot, watchedItems, _ ->
             val (items, nextUpSeeds, hasLoadedRemoteProgress) = progressSnapshot
             @Suppress("UNCHECKED_CAST")
             val daysCap = settingsSnapshot[0] as Int
@@ -318,7 +319,7 @@ internal fun HomeViewModel.loadContinueWatchingPipeline() {
                 showUnairedNextUp = showUnairedNextUp,
                 nextUpFromFurthestEpisode = nextUpFromFurthestEpisode,
                 continueWatchingSortMode = continueWatchingSortMode,
-                watchedItemsVersion = watchedItemsSize,
+                watchedItems = watchedItems,
                 hasLoadedRemoteProgress = hasLoadedRemoteProgress
             )
         }.debounce(CW_PROGRESS_DEBOUNCE_MS).holdWhilePlayerOpen().collectLatest { snapshot ->
@@ -688,7 +689,7 @@ internal fun HomeViewModel.loadContinueWatchingPipeline() {
                 // Badge evaluation is handled exclusively by publishBadgeUpdate below,
                 // which uses getWatchedShowEpisodes() as the single source of truth.
                 // No seed-based heuristics here.
-                val allWatchedItems = watchProgressRepository.watchedItems.first()
+                val allWatchedItems = snapshot.watchedItems
                 // --- Async badge evaluation ---
                 // Resolve meta for all series with watched episodes and evaluate badges.
                 // Uses getWatchedShowEpisodes() as the single source of truth.
@@ -814,13 +815,27 @@ internal fun HomeViewModel.loadContinueWatchingPipeline() {
                             .filter { it.contentId in uncachedOlderSeedIds }
                             .filter { isSeriesTypeCW(it.contentType) && it.season != null && it.episode != null && it.season != 0 }
                             .filter { shouldUseAsCompletedSeed(it) }
-                        val seedsFromWatchedItems = uncachedOlderSeedIds
-                            .filter { contentId -> seedsFromNextUp.none { it.contentId == contentId } }
+                        val needsWatchedFallback = uncachedOlderSeedIds - seedsFromNextUp.map { it.contentId }.toSet()
+                        val latestWatchedEpisodes = withContext(Dispatchers.Default) {
+                            val episodes = mutableMapOf<String, WatchedItem>()
+                            for (item in allWatchedItems) {
+                                if (item.contentId !in needsWatchedFallback) continue
+                                val season = item.season ?: continue
+                                val episode = item.episode ?: continue
+                                val previous = episodes[item.contentId]
+                                val previousSeason = previous?.season ?: -1
+                                val previousEpisode = previous?.episode ?: -1
+                                if (previous == null || season > previousSeason ||
+                                    (season == previousSeason && episode > previousEpisode)
+                                ) {
+                                    episodes[item.contentId] = item
+                                }
+                            }
+                            episodes
+                        }
+                        val seedsFromWatchedItems = needsWatchedFallback
                             .mapNotNull { contentId ->
-                                val latestEpisode = allWatchedItems
-                                    .filter { it.contentId == contentId && it.season != null && it.episode != null }
-                                    .maxWithOrNull(compareBy({ it.season }, { it.episode }))
-                                    ?: return@mapNotNull null
+                                val latestEpisode = latestWatchedEpisodes[contentId] ?: return@mapNotNull null
                                 WatchProgress(
                                     contentId = contentId,
                                     contentType = "series",
@@ -1216,12 +1231,29 @@ internal fun HomeViewModel.loadContinueWatchingPipeline() {
     }
 }
 
-private fun deduplicateInProgress(items: List<WatchProgress>): List<WatchProgress> {
+internal fun deduplicateInProgress(items: List<WatchProgress>): List<WatchProgress> {
     val (series, nonSeries) = items.partition { isSeriesTypeCW(it.contentType) }
     val latestPerShow = series
         .sortedByDescending { it.lastWatched }
         .distinctBy { it.contentId }
-    return (nonSeries + latestPerShow).sortedByDescending { it.lastWatched }
+    val (movies, otherItems) = nonSeries.partition {
+        it.contentType.equals("movie", ignoreCase = true) && it.contentId.isNotBlank()
+    }
+    val latestPerMovie = movies.groupBy { progress ->
+        val id = progress.contentId.trim()
+        val imdbId = id.lowercase(Locale.US).removePrefix("imdb:")
+        if (imdbId.startsWith("tt") && imdbId.length > 2 &&
+            imdbId.drop(2).all(Char::isDigit)
+        ) imdbId else id
+    }.values.map { matches ->
+        val latest = matches.maxBy { it.lastWatched }
+        val latestLocal = matches.asSequence()
+            .filter { it.source == WatchProgress.SOURCE_LOCAL }
+            .maxByOrNull { it.lastWatched }
+        // Prefer the exact local position when remote scrobble timestamps are close.
+        latestLocal?.takeIf { latest.lastWatched - it.lastWatched <= 120_000L } ?: latest
+    }
+    return (otherItems + latestPerMovie + latestPerShow).sortedByDescending { it.lastWatched }
 }
 
 // Same rule the player uses to resume, so CW never shows items that would restart from 0

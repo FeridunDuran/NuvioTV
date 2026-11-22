@@ -7,6 +7,8 @@ import com.nuvio.tv.ui.theme.NuvioTheme
 import android.view.KeyEvent as AndroidKeyEvent
 import androidx.compose.animation.core.AnimationSpec
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.snap
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
@@ -32,6 +34,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyListPrefetchStrategy
 import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.layout.LazyLayoutCacheWindow
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -65,6 +68,7 @@ import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
@@ -201,6 +205,7 @@ private fun ModernContinueWatchingRowItem(
         }
     }
 
+    val focusView = LocalView.current
     ContinueWatchingCard(
         item = item,
         onClick = onClick,
@@ -217,6 +222,7 @@ private fun ModernContinueWatchingRowItem(
             .onFocusChanged {
                 isCardFocused = it.isFocused
                 if (it.isFocused) {
+                    com.nuvio.tv.core.perf.TurboPerf.onHomeCardFocused(focusView)
                     focusEventId += 1
                 }
             }
@@ -279,6 +285,7 @@ private fun ModernCatalogRowItem(
     val latestOnFocused by rememberUpdatedState(onFocused)
     val latestOnItemFocus by rememberUpdatedState(onItemFocus)
     val latestOnPreloadAdjacentItem by rememberUpdatedState(onPreloadAdjacentItem)
+    val reducedEffects = rememberReducedHomeEffects()
     val latestOnCatalogSelectionFocused by rememberUpdatedState(onCatalogSelectionFocused)
 
     // Bump focusEventId to re-trigger selection reporting.
@@ -305,7 +312,7 @@ private fun ModernCatalogRowItem(
 
         // Heavy "settled" work (trailers, enrichment) remains debounced.
         item.metaPreview?.let { latestOnItemFocus(it) }
-        latestOnPreloadAdjacentItem()
+        if (!reducedEffects) latestOnPreloadAdjacentItem()
         when (payload) {
             is ModernPayload.Catalog -> {
                 if (!payload.itemId.startsWith("__placeholder_")) {
@@ -378,6 +385,7 @@ private fun ModernCatalogRowItem(
         )
     }
 
+    val focusView = LocalView.current
     ModernCarouselCard(
         item = item,
         useLandscapeOverlayTreatment = useLandscapePosters,
@@ -403,6 +411,7 @@ private fun ModernCatalogRowItem(
         },
         onFocusStateChanged = { focused ->
             isCardFocused = focused
+            if (focused) com.nuvio.tv.core.perf.TurboPerf.onHomeCardFocused(focusView)
         },
         onClick = {
             latestOnFocused()
@@ -559,9 +568,12 @@ internal fun ModernRowSection(
                 ?.let { anchor -> row.items.list.indexOfFirst { it.key == anchor } }
                 ?.takeIf { it >= 0 }
                 ?: focusStateCatalogRowScrollIndex
+            // Personal build: cache window instead of the 1-item default prefetch: about two
+            // cards ahead and one behind stay composed, so right/left moves (and reversals)
+            // land on composed cards. Rows above/below are kept composed by the vertical list.
             LazyListState(
-                firstVisibleItemIndex = restoredIndex,
-                prefetchStrategy = LazyListPrefetchStrategy(nestedPrefetchItemCount = NESTED_PREFETCH_COUNT)
+                cacheWindow = LazyLayoutCacheWindow(ahead = 440.dp, behind = 220.dp),
+                firstVisibleItemIndex = restoredIndex
             )
         }
 
@@ -1106,9 +1118,11 @@ private fun ModernCarouselCard(
     } else {
         cardWidth
     }
+    val reducedEffects = rememberReducedHomeEffects()
     val animatedCardWidthState = if (focusedPosterBackdropExpandEnabled) {
         animateDpAsState(
             targetValue = targetCardWidth,
+            animationSpec = if (reducedEffects && !isBackdropExpanded) snap() else spring(visibilityThreshold = 0.1.dp),
             label = "modernCardWidth"
         )
     } else {
@@ -1396,7 +1410,9 @@ private fun ModernCarouselCard(
 
                 Box(modifier = mediaLayerModifier) {
                     val isPlaceholderItem = item.imageUrl.isPlaceholder()
-                    if (isPlaceholderItem) {
+                    if (isPlaceholderItem && reducedEffects) {
+                        Box(Modifier.fillMaxSize().background(Color.White.copy(alpha = 0.07f)))
+                    } else if (isPlaceholderItem) {
                         // Horizontal sweeping shimmer for placeholder cards
                         val effectivePlaceholderShimmerOffsetState =
                             placeholderShimmerOffsetState ?: rememberPlaceholderShimmerOffsetState(

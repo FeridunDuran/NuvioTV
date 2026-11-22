@@ -93,6 +93,7 @@ import com.nuvio.tv.R
 import com.nuvio.tv.ui.util.dpadVerticalFastScroll
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.compose.runtime.DisposableEffect
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -545,6 +546,17 @@ fun MetaDetailsScreen(
     }
 
     val lifecycleOwner = LocalLifecycleOwner.current
+    val prewarmMovieId = viewModel.prewarmMovieId(uiState.meta)
+    LaunchedEffect(lifecycleOwner, prewarmMovieId, playOnLoad) {
+        val videoId = prewarmMovieId ?: return@LaunchedEffect
+        if (playOnLoad || !android.util.Log.isLoggable("NuvioPrewarm", android.util.Log.DEBUG)) {
+            return@LaunchedEffect
+        }
+        lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+            delay(1_500L)
+            viewModel.prewarmMovieStreams(videoId)
+        }
+    }
     DisposableEffect(lifecycleOwner) {
         if (
             playOnLoad &&
@@ -753,6 +765,9 @@ fun MetaDetailsScreen(
                     if (!playbackAvailability.canStream(meta.apiType, videoId, meta.id)) {
                         Toast.makeText(context, R.string.playback_unavailable_message, Toast.LENGTH_SHORT).show()
                         return@playTitle
+                    }
+                    if (android.util.Log.isLoggable("TurboPerf", android.util.Log.DEBUG)) {
+                        com.nuvio.tv.core.perf.TurboPerf.mark("movie_play_clicked")
                     }
                     onPlayClick(
                         videoId,

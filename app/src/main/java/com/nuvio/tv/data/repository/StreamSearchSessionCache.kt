@@ -51,6 +51,7 @@ internal class StreamSearchSessionCache(
         val state: MutableStateFlow<Snapshot>
     ) {
         lateinit var job: Job
+        var speculative = false
         @Volatile var invalidated: Boolean = false
         var completedAtMs: Long? = null
         var lastSuccessfulResult: NetworkResult.Success<List<AddonStreams>>? = null
@@ -62,19 +63,35 @@ internal class StreamSearchSessionCache(
     fun observe(
         key: StreamSearchRequestKey,
         forceRefresh: Boolean,
+        speculative: Boolean = false,
         producer: () -> Flow<NetworkResult<List<AddonStreams>>>
     ): Flow<NetworkResult<List<AddonStreams>>> = flow {
-        val session = acquireSession(key, forceRefresh, producer)
+        val session = acquireSession(key, forceRefresh, speculative, producer) ?: return@flow
         var emittedVersion = -1L
-        emitAll(
-            session.state.transformWhile { snapshot ->
-                if (snapshot.version != emittedVersion) {
-                    emittedVersion = snapshot.version
-                    emit(snapshot.result)
+        try {
+            emitAll(
+                session.state.transformWhile { snapshot ->
+                    if (snapshot.version != emittedVersion) {
+                        emittedVersion = snapshot.version
+                        emit(snapshot.result)
+                    }
+                    !snapshot.isComplete
                 }
-                !snapshot.isComplete
+            )
+        } finally {
+            if (speculative) {
+                withContext(NonCancellable) {
+                    mutex.withLock {
+                        if (sessions[key] === session && session.speculative &&
+                            !session.state.value.isComplete
+                        ) {
+                            sessions.remove(key)
+                            session.cancelAndComplete()
+                        }
+                    }
+                }
             }
-        )
+        }
     }
 
     /**
@@ -106,20 +123,32 @@ internal class StreamSearchSessionCache(
     private suspend fun acquireSession(
         key: StreamSearchRequestKey,
         forceRefresh: Boolean,
+        speculative: Boolean,
         producer: () -> Flow<NetworkResult<List<AddonStreams>>>
-    ): Session {
+    ): Session? {
         var created: Session? = null
         val selected = mutex.withLock {
             removeExpiredLocked()
-            removeObsoleteSessionsLocked(key)
+            if (speculative) {
+                if (sessions.containsKey(key) || sessions.values.any { !it.state.value.isComplete }) {
+                    return@withLock null
+                }
+                if (sessions.size >= maxEntries) return@withLock null
+            } else {
+                removeObsoleteSessionsLocked(key)
+            }
 
             if (forceRefresh) {
                 sessions.remove(key)?.cancelAndComplete()
             } else {
-                sessions[key]?.let { return@withLock it }
+                sessions[key]?.let { session ->
+                    session.speculative = false
+                    return@withLock session
+                }
             }
 
             createSession(key, producer).also { session ->
+                session.speculative = speculative
                 sessions[key] = session
                 trimToSizeLocked()
                 created = session

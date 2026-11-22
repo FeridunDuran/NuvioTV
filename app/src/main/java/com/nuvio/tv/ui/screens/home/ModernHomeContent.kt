@@ -11,6 +11,7 @@ import com.nuvio.tv.ui.theme.NuvioTheme
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.AnimationSpec
 import androidx.compose.animation.core.animateFloatAsState
+import com.nuvio.tv.domain.model.isPlaceholder
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.BringIntoViewSpec
@@ -22,6 +23,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.layout.LazyLayoutCacheWindow
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
@@ -207,7 +209,11 @@ fun ModernHomeContent(
     val activeRowKeys = carouselLookups.activeRowKeys
     val activeCatalogItemIds = carouselLookups.activeCatalogItemIds
 
+    // Personal build: keep about one row above and below the viewport composed, so a D-pad
+    // move up or down lands on cards that are already composed and measured instead of
+    // composing a whole row (and its visible cards) inside the frame of the key press.
     val verticalRowListState = rememberLazyListState(
+        cacheWindow = remember { LazyLayoutCacheWindow(ahead = 360.dp, behind = 360.dp) },
         initialFirstVisibleItemIndex = focusState.verticalScrollIndex,
         initialFirstVisibleItemScrollOffset = focusState.verticalScrollOffset
     )
@@ -563,6 +569,7 @@ fun ModernHomeContent(
     // Detect rapid horizontal navigation (holding DPAD left/right).
     // Activates after two successive item changes within the SAME row within 300ms.
     val lastRapidNavRowKey = remember { mutableStateOf<String?>(null) }
+    val lastRapidHeroChangeMs = remember { mutableLongStateOf(0L) }
     // Written from the scope below the same way rememberUpdatedState would be, for the dispose save.
     val latestActiveRowHolder = remember { mutableStateOf<HeroCarouselRow?>(null) }
 
@@ -585,14 +592,16 @@ fun ModernHomeContent(
         LaunchedEffect(activeHeroItemKey) {
             if (activeHeroItemKey == null) return@LaunchedEffect
             val currentRowKey = activeRowKey.value
-            val timeSinceLast = System.currentTimeMillis() - lastHeroNavigationAtMs.longValue
-            // Only activate rapid nav if we're in the same row as last navigation
-            if (timeSinceLast in 1..300 && lastRapidNavRowKey.value == currentRowKey) {
-                isRapidHorizontalNav.value = true
-            }
+            val now = android.os.SystemClock.uptimeMillis()
+            val timeSinceLast = now - lastRapidHeroChangeMs.longValue
+            isRapidHorizontalNav.value = lastRapidHeroChangeMs.longValue != 0L &&
+                timeSinceLast in 1..300 && lastRapidNavRowKey.value == currentRowKey
+            lastRapidHeroChangeMs.longValue = now
             lastRapidNavRowKey.value = currentRowKey
-            delay(heroFocusSettleDelayMs.longValue)
-            isRapidHorizontalNav.value = false
+            if (isRapidHorizontalNav.value) {
+                delay(heroFocusSettleDelayMs.longValue)
+                isRapidHorizontalNav.value = false
+            }
         }
 
         val latestHeroRow by rememberUpdatedState(activeRow)
@@ -722,7 +731,16 @@ fun ModernHomeContent(
                 }
             }
 
-            val resolvedHeroState = remember(activeCarouselItemState, enrichedPreviews, enrichingItemId, heroItem, uiState.heroEnrichmentEnabled, uiState.homeImdbRatingsVisibility, failedEnrichmentIds) {
+            val sharedCatalogBackdrops = remember(activeRowState) {
+                derivedStateOf {
+                    activeRowState.value?.items?.list.orEmpty()
+                        .groupBy { it.heroPreview.backdrop?.trim() }
+                        .filterValues { items -> items.distinctBy { it.metaPreview?.id ?: it.key }.size > 1 }
+                        .keys
+                }
+            }
+
+            val resolvedHeroState = remember(activeCarouselItemState, enrichedPreviews, enrichingItemId, sharedCatalogBackdrops) {
                 derivedStateOf {
                     val activeCarouselItem = activeCarouselItemState.value
                     val activeItemId = activeCarouselItem?.metaPreview?.id
@@ -765,30 +783,30 @@ fun ModernHomeContent(
                         else -> activeCarouselItem.heroPreview
                     }
                     
-                    // Only use the real enrichmentActive flag from the ViewModel.
-                    // Additionally, if enrichment is enabled but no enriched data exists yet
-                    // for this item, treat as pending to avoid showing un-enriched addon data.
-                    // Exception: if enrichment already failed for this item, show addon data.
-                    // Also treat as pending when activeCarouselItem is null (row not yet resolved).
-                    val heroEnrichmentEnabled = uiState.heroEnrichmentEnabled
-                    val enrichmentFailed = activeItemId != null && activeItemId in failedEnrichmentIds.value
-                    val effectiveEnrichmentActive = activeCarouselItem == null || enrichmentActive ||
-                        (enrichedHero == null && activeItemId != null && heroEnrichmentEnabled && !enrichmentFailed)
-                    
-                    val activeRowKeyVal = activeRowKey.value
-                    val activeRow = activeRowKeyVal?.let { rowByKey[it] }
-                    val activeRowFallbackBackdrop = activeRow?.items?.list?.firstNotNullOfOrNull { item ->
-                        item.heroPreview.backdrop?.takeIf { it.isNotBlank() }
+                    val artwork = if (activeCarouselItem == null) {
+                        emptyList()
+                    } else {
+                        val catalogPreview = activeCarouselItem.heroPreview
+                        val sharedBackdrops = sharedCatalogBackdrops.value
+                        listOfNotNull(
+                            enrichedItem?.background?.trim()?.takeUnless { it in sharedBackdrops },
+                            enrichedItem?.landscapePoster?.trim()?.takeUnless { it in sharedBackdrops },
+                            catalogPreview.backdrop?.trim()?.takeUnless { it in sharedBackdrops },
+                            activeCarouselItem.metaPreview?.rawPosterUrl,
+                            resolvedHero?.imageUrl,
+                            resolvedHero?.poster,
+                            catalogPreview.poster
+                        ).map { it.trim() }
+                            .filter { it.isNotEmpty() && !it.isPlaceholder() && it !in sharedBackdrops }
+                            .distinct()
+                            .ifEmpty {
+                                listOfNotNull(catalogPreview.backdrop?.trim()
+                                    ?.takeIf { it.isNotEmpty() && !it.isPlaceholder() })
+                            }
                     }
-                    
-                    val heroBackdrop = firstNonBlank(
-                        resolvedHero?.backdrop,
-                        resolvedHero?.imageUrl,
-                        resolvedHero?.poster,
-                        activeRowFallbackBackdrop
-                    )
-                    
-                    Triple(heroBackdrop, resolvedHero, effectiveEnrichmentActive)
+
+                    // Keep catalog data visible while optional enrichment resolves.
+                    Triple(artwork, resolvedHero, activeCarouselItem == null)
                 }
             }
 
@@ -913,11 +931,12 @@ fun ModernHomeContent(
                 fullScreenBackdrop
             ) {
                 derivedStateOf {
-                    val (heroBackdrop, resolvedHero, enrichmentActive) = resolvedHeroState.value
+                    val (heroArtwork, resolvedHero, enrichmentActive) = resolvedHeroState.value
                     val (heroMediaUrl, heroMediaAudioUrl, heroMediaPlaybackKey) = heroMediaDataState.value
                     val preview = if (enrichmentActive) null else resolvedHero
                     ModernHeroSceneState(
-                        heroBackdrop = heroBackdrop,
+                        heroBackdrop = heroArtwork.firstOrNull(),
+                        heroArtworkFallbacks = heroArtwork.drop(1),
                         preview = preview,
                         enrichmentActive = enrichmentActive,
                         shouldPlayTrailer = shouldPlayHeroTrailerState.value,

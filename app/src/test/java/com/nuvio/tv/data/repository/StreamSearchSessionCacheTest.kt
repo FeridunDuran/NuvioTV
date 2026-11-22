@@ -8,6 +8,9 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.launch
@@ -19,6 +22,66 @@ import org.junit.Assert.assertNull
 import org.junit.Test
 
 class StreamSearchSessionCacheTest {
+
+    @Test
+    fun `cancelled prewarm releases the search slot`() = runTest {
+        val cache = StreamSearchSessionCache()
+        val key = mediaKey(searchMode = "", priorityBingeGroup = "").copy(type = "movie", season = null, episode = null)
+        val started = CompletableDeferred<Unit>()
+        val cancelled = CompletableDeferred<Unit>()
+        val prewarm = launch {
+            cache.observe(key, forceRefresh = false, speculative = true) {
+                flow {
+                    started.complete(Unit)
+                    try {
+                        awaitCancellation()
+                    } finally {
+                        cancelled.complete(Unit)
+                    }
+                }
+            }.collect {}
+        }
+        started.await()
+
+        var secondStarted = false
+        cache.observe(key.copy(videoId = "another"), forceRefresh = false, speculative = true) {
+            secondStarted = true
+            flow {}
+        }.collect {}
+        assertFalse(secondStarted)
+
+        prewarm.cancelAndJoin()
+        cancelled.await()
+        assertNull(cache.peek(key))
+    }
+
+    @Test
+    fun `foreground collector adopts the prewarm producer`() = runTest {
+        val cache = StreamSearchSessionCache()
+        val key = mediaKey(searchMode = "", priorityBingeGroup = "").copy(type = "movie", season = null, episode = null)
+        val started = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        val prewarm = launch {
+            cache.observe(key, forceRefresh = false, speculative = true) {
+                flow {
+                    started.complete(Unit)
+                    release.await()
+                    emit(NetworkResult.Success(emptyList()))
+                }
+            }.collect {}
+        }
+        started.await()
+        var foregroundResult: NetworkResult<List<AddonStreams>>? = null
+        val foreground = launch(start = CoroutineStart.UNDISPATCHED) {
+            foregroundResult = cache.observe(key, forceRefresh = false) {
+                error("Expected the existing producer")
+            }.first { it is NetworkResult.Success }
+        }
+        prewarm.cancelAndJoin()
+        release.complete(Unit)
+        foreground.join()
+        assertEquals(NetworkResult.Success(emptyList<AddonStreams>()), foregroundResult)
+    }
 
     @Test
     fun `full search leaves an in-flight plugin continuation running`() = runTest {

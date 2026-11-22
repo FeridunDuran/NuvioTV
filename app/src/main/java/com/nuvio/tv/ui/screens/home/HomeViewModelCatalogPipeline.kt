@@ -153,6 +153,9 @@ internal suspend fun HomeViewModel.loadAllCatalogsPipeline(
         return
     }
 
+    // Seed the hero before catalog results arrive, independently of debounced UI preferences.
+    currentHeroCatalogKeys = layoutPreferenceDataStore.heroCatalogSelections.first()
+
     activeCatalogLoadSignature = signature
     catalogsLoadInProgress = true
     // A full load leaves every catalog fresh, so the next return to Home has nothing to do.
@@ -176,7 +179,7 @@ internal suspend fun HomeViewModel.loadAllCatalogsPipeline(
     posterStatusReconcileJob?.cancel()
     reconcilePosterStatusObserversPipeline(emptyList())
     _fullCatalogRows.value = emptyList()
-    hasRenderedFirstCatalog = false
+    catalogUpdateJob?.cancel()
     trailerPreviewLoadingIds.clear()
     trailerPreviewNegativeCache.clear()
     trailerPreviewUrlsState.clear()
@@ -296,8 +299,22 @@ internal suspend fun HomeViewModel.loadAllCatalogsPipeline(
             _uiState.first { it.layoutPreferencesReady }
         }
         val isGridLayout = _uiState.value.homeLayout == HomeLayout.GRID
-        val eagerHomeCatalogs = if (isGridLayout) catalogsToLoad else catalogsToLoad.take(eagerCatalogLoadCount)
-        val lazyHomeCatalogs = if (isGridLayout) emptyList() else catalogsToLoad.drop(eagerCatalogLoadCount)
+        val homeOrder = snapshotCatalogState().first.withIndex().associate { (index, key) -> key to index }
+        fun keyFor(pair: Pair<Addon, CatalogDescriptor>): String {
+            val (addon, catalog) = pair
+            return catalogKey(addonId = addon.id, type = catalog.apiType, catalogId = catalog.id)
+        }
+        val orderedHomeCatalogs = catalogsToLoad.sortedBy { homeOrder[keyFor(it)] ?: Int.MAX_VALUE }
+        val initialHomeCatalogs = if (isGridLayout) orderedHomeCatalogs else orderedHomeCatalogs.take(eagerCatalogLoadCount)
+        val selectedCatalogs = (orderedHomeCatalogs + heroOnlyCatalogs).filter { keyFor(it) in heroCatalogSet }
+        val firstCatalogs = (selectedCatalogs.take(1) + initialHomeCatalogs.take(1)).distinctBy(::keyFor)
+        val startingAddonIds = firstCatalogs.mapTo(hashSetOf()) { (addon, _) -> addon.id }
+        // Do not give every initial permit to one add-on that may time out.
+        val alternateCatalog = orderedHomeCatalogs.firstOrNull { (addon, _) -> addon.id !in startingAddonIds }
+        val eagerCatalogs = (firstCatalogs + listOfNotNull(alternateCatalog) + initialHomeCatalogs.take(2) +
+            selectedCatalogs + initialHomeCatalogs).distinctBy(::keyFor)
+        val eagerKeys = eagerCatalogs.mapTo(hashSetOf(), ::keyFor)
+        val lazyHomeCatalogs = orderedHomeCatalogs.filterNot { keyFor(it) in eagerKeys }
 
         // Build placeholder descriptors for lazy catalogs
         synchronized(catalogStateLock) {
@@ -306,7 +323,7 @@ internal suspend fun HomeViewModel.loadAllCatalogsPipeline(
         }
         lazyLoadRequestedKeys.clear()
 
-        (eagerHomeCatalogs + lazyHomeCatalogs).forEach { (addon, catalog) ->
+        orderedHomeCatalogs.forEach { (addon, catalog) ->
             val key = catalogKey(addonId = addon.id, type = catalog.apiType, catalogId = catalog.id)
             synchronized(catalogStateLock) {
                 placeholderDescriptors.add(
@@ -332,10 +349,9 @@ internal suspend fun HomeViewModel.loadAllCatalogsPipeline(
         }
 
         Log.d(HomeViewModel.TAG,
-            "Lazy loading: eager=${eagerHomeCatalogs.size} lazy=${lazyHomeCatalogs.size}"
+            "Lazy loading: eager=${eagerCatalogs.size} lazy=${lazyHomeCatalogs.size}"
         )
 
-        val eagerCatalogs = eagerHomeCatalogs + heroOnlyCatalogs
         pendingCatalogLoads = eagerCatalogs.size
         eagerCatalogs.forEach { (addon, catalog) ->
             loadCatalogPipeline(addon, catalog, generation)
@@ -345,18 +361,8 @@ internal suspend fun HomeViewModel.loadAllCatalogsPipeline(
         // while catalogs are still loading.
         scheduleUpdateCatalogRows()
 
-        // Safety flush: if catalogs trickle in slowly (e.g., slow addons),
-        // ensure the user sees whatever content is available within a
-        // reasonable window, even if not all catalogs have completed yet.
-        if (eagerCatalogs.size > 1) {
-            viewModelScope.launch {
-                delay(800L)
-                if (pendingCatalogLoads > 0 && hasAnyCatalogRows()) {
-                    Log.d(HomeViewModel.TAG, "Safety flush: pending=$pendingCatalogLoads — forcing UI update")
-                    scheduleUpdateCatalogRows()
-                }
-            }
-        }
+    } catch (e: kotlinx.coroutines.CancellationException) {
+        throw e
     } catch (e: Exception) {
         catalogsLoadInProgress = false
         _uiState.update { it.copy(isLoading = false, error = e.message) }
@@ -420,6 +426,24 @@ internal fun HomeViewModel.loadCatalogPipeline(
             if (generation != catalogLoadGeneration) return@withPermit
             val supportsSkip = catalog.supportsExtra("skip")
             val skipStep = catalog.skipStep()
+            if (!isRefresh && !requestedByUser) {
+                val key = catalogKey(addonId = addon.id, type = catalog.apiType, catalogId = catalog.id)
+                val cached = catalogRepository.getCachedHomeCatalog(
+                    addon.baseUrl, addon.id, addon.displayName, catalog.id, catalog.name,
+                    catalog.apiType, skipStep, supportsSkip
+                )
+                if (generation != catalogLoadGeneration) return@withPermit
+                if (cached != null && snapshotCatalogState().second[key] == null) {
+                    replaceCatalogRow(key, cached)
+                    synchronized(catalogStateLock) {
+                        placeholderDescriptors.removeAll { it.catalogKey == key }
+                    }
+                    scheduleUpdateCatalogRows()
+                    if (Log.isLoggable("TurboPerf", Log.DEBUG)) {
+                        com.nuvio.tv.core.perf.TurboPerf.mark("home_catalog_cache_preview")
+                    }
+                }
+            }
             Log.d(
                 HomeViewModel.TAG,
                 "Loading home catalog addonId=${addon.id} addonName=${addon.name} type=${catalog.apiType} catalogId=${catalog.id} catalogName=${catalog.name} supportsSkip=$supportsSkip skipStep=$skipStep"
@@ -463,19 +487,7 @@ internal fun HomeViewModel.loadCatalogPipeline(
                         if (pendingCatalogLoads == 0) {
                             catalogsLoadInProgress = false
                         }
-                        // Batch updates: only trigger a UI rebuild when all
-                        // eager catalogs have completed, or let the debounce
-                        // in scheduleUpdateCatalogRows coalesce intermediate
-                        // arrivals.  When pending == 0 we always flush.
-                        if (pendingCatalogLoads == 0) {
-                            scheduleUpdateCatalogRows()
-                        } else if (!hasRenderedFirstCatalog) {
-                            // First content arriving — show it quickly so the
-                            // user sees something beyond placeholders.
-                            scheduleUpdateCatalogRows()
-                        }
-                        // Otherwise, let the next completion or the final
-                        // pendingCatalogLoads==0 trigger the update.
+                        scheduleUpdateCatalogRows()
                     }
                     is NetworkResult.Error -> {
                         val errorKey = catalogKey(
@@ -498,10 +510,7 @@ internal fun HomeViewModel.loadCatalogPipeline(
                         if (pendingCatalogLoads == 0) {
                             catalogsLoadInProgress = false
                         }
-                        // Same batching logic as success path.
-                        if (pendingCatalogLoads == 0 || !hasRenderedFirstCatalog) {
-                            scheduleUpdateCatalogRows()
-                        }
+                        scheduleUpdateCatalogRows()
                     }
                     NetworkResult.Loading -> {
                         /* Handled by individual row */
@@ -888,6 +897,10 @@ internal suspend fun HomeViewModel.updateCatalogRowsPipeline() {
             isLoading = false,
             error = if (hasContent) null else state.error
         )
+    }
+
+    if (displayRows.isNotEmpty() && Log.isLoggable("TurboPerf", Log.DEBUG)) {
+        com.nuvio.tv.core.perf.TurboPerf.mark("home_rows_published_${displayRows.size}")
     }
 
     val tmdbSettings = currentTmdbSettings

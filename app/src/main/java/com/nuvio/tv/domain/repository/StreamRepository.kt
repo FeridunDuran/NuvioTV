@@ -29,6 +29,9 @@ interface StreamRepository {
         continuePluginOnly: Boolean = false
     ): Flow<NetworkResult<List<AddonStreams>>>
 
+    /** Warms the normal movie search while the caller remains active. */
+    suspend fun prewarmMovieStreams(videoId: String)
+
     /**
      * Returns streams a recent search already holds for this video, including a plugin
      * continuation stored under a different search mode. Never starts a search.

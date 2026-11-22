@@ -6,8 +6,13 @@ import android.content.Context
 import android.os.Debug
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
+import android.os.Trace
 import android.util.Log
 import android.view.Choreographer
+import android.view.KeyEvent
+import android.view.View
+import androidx.core.view.doOnPreDraw
 
 /**
  * Lightweight performance log for weak TVs. Read it with: adb logcat -s TurboPerf
@@ -62,6 +67,7 @@ object TurboPerf {
         val enable = foreground && Log.isLoggable(TAG, Log.DEBUG)
         if (sampling == enable) return
         sampling = enable
+        pendingFocusSample = 0L
         main.removeCallbacks(report)
         Choreographer.getInstance().removeFrameCallback(frameCallback)
         lastFrameNs = 0L
@@ -72,6 +78,59 @@ object TurboPerf {
             Choreographer.getInstance().postFrameCallback(frameCallback)
             main.postDelayed(report, REPORT_MS)
         }
+    }
+
+    private var dispatchingDpad = false
+    private var dpadEventTimeMs = 0L
+    private var focusSample = 0L
+    private var pendingFocusSample = 0L
+
+    fun dispatchDpad(event: KeyEvent, dispatch: () -> Boolean): Boolean {
+        if (!sampling || event.action != KeyEvent.ACTION_DOWN ||
+            event.keyCode !in KeyEvent.KEYCODE_DPAD_UP..KeyEvent.KEYCODE_DPAD_RIGHT
+        ) return dispatch()
+
+        dispatchingDpad = true
+        dpadEventTimeMs = event.eventTime
+        Trace.beginSection("Nuvio D-pad dispatch")
+        return try {
+            dispatch()
+        } finally {
+            Trace.endSection()
+            dispatchingDpad = false
+        }
+    }
+
+    fun onHomeCardFocused(view: View) {
+        if (!dispatchingDpad || pendingFocusSample != 0L) return
+        val inputTimeMs = dpadEventTimeMs
+        val focusTimeMs = SystemClock.uptimeMillis()
+        val sample = ++focusSample
+        pendingFocusSample = sample
+        view.doOnPreDraw {
+            if (pendingFocusSample != sample) return@doOnPreDraw
+            pendingFocusSample = 0L
+            if (sampling) {
+                Trace.beginSection("Nuvio Home focus pre-draw")
+                Trace.endSection()
+                Log.d(
+                    TAG,
+                    "event=home_focus_predraw inputToFocusMs=${focusTimeMs - inputTimeMs} " +
+                        "focusToPreDrawMs=${SystemClock.uptimeMillis() - focusTimeMs}"
+                )
+            }
+        }
+        // A detached view loses its pre-draw listener. Clear the pending flag if no frame arrives.
+        main.postDelayed({
+            if (pendingFocusSample == sample) pendingFocusSample = 0L
+        }, 500L)
+    }
+
+    fun onHeroBackdropLoaded() {
+        if (!sampling) return
+        Trace.beginSection("Nuvio Hero backdrop loaded")
+        Trace.endSection()
+        mark("hero_backdrop_loaded")
     }
 
     fun mark(name: String) {

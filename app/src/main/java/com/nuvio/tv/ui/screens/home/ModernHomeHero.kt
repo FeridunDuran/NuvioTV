@@ -28,6 +28,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -72,6 +73,10 @@ private data class ModernHeroSecondaryMeta(
     val details: List<String>
 )
 
+
+// Personal build: how long the hero waits for a logo before drawing the plain title.
+private const val HERO_TITLE_LOGO_GRACE_MS = 900L
+
 @Composable
 internal fun ModernHeroScene(
     state: () -> ModernHeroSceneState,
@@ -85,6 +90,7 @@ internal fun ModernHeroScene(
 ) {
     ModernHeroMediaLayer(
         heroBackdrop = { state().heroBackdrop },
+        heroArtworkFallbacks = { state().heroArtworkFallbacks },
         enrichmentActive = { state().enrichmentActive },
         shouldPlayHeroTrailer = { state().shouldPlayTrailer },
         heroTrailerFirstFrameRendered = { state().trailerFirstFrameRendered },
@@ -113,6 +119,7 @@ internal fun ModernHeroScene(
 @Composable
 internal fun ModernHeroMediaLayer(
     heroBackdrop: () -> String?,
+    heroArtworkFallbacks: () -> List<String>,
     enrichmentActive: () -> Boolean,
     shouldPlayHeroTrailer: () -> Boolean,
     heroTrailerFirstFrameRendered: () -> Boolean,
@@ -139,9 +146,12 @@ internal fun ModernHeroMediaLayer(
     // during rapid nav / scroll). Only update when enrichment is not active
     val rawBackdrop by remember { derivedStateOf { heroBackdrop() } }
     val enriching by remember { derivedStateOf { enrichmentActive() } }
-    var displayedBackdrop by remember { mutableStateOf(HeroBackdropState.lastDisplayedUrl ?: heroBackdrop()) }
-    if (rawBackdrop != null && rawBackdrop != displayedBackdrop && !enriching) {
-        displayedBackdrop = rawBackdrop!!
+    val fallbackArtwork by remember { derivedStateOf { heroArtworkFallbacks() } }
+    var failedArtwork by remember(rawBackdrop, fallbackArtwork) { mutableStateOf(emptySet<String>()) }
+    val displayedBackdrop = if (enriching) {
+        HeroBackdropState.lastDisplayedUrl
+    } else {
+        (listOfNotNull(rawBackdrop) + fallbackArtwork).firstOrNull { it !in failedArtwork }
     }
     val imageModel = remember(
         localContext,
@@ -156,15 +166,17 @@ internal fun ModernHeroMediaLayer(
                 .build()
         }
     }
-    // Keep HeroBackdropState in sync for navigation transitions.
-    LaunchedEffect(displayedBackdrop) {
-        displayedBackdrop?.let { HeroBackdropState.update(it) }
+    val reducedEffects = rememberReducedHomeEffects()
+    LaunchedEffect(rawBackdrop) {
+        if (rawBackdrop != null && android.util.Log.isLoggable("TurboPerf", android.util.Log.DEBUG)) {
+            com.nuvio.tv.core.perf.TurboPerf.mark("hero_artwork_selected")
+        }
     }
 
     Box(modifier = modifier) {
         androidx.compose.animation.Crossfade(
             targetState = imageModel,
-            animationSpec = tween(durationMillis = NuvioMotion.tokens.durations.overlay),
+            animationSpec = tween(durationMillis = if (reducedEffects) 90 else NuvioMotion.tokens.durations.overlay),
             label = "heroBackdropCrossfade"
         ) { model ->
             AsyncImage(
@@ -173,11 +185,33 @@ internal fun ModernHeroMediaLayer(
                 modifier = Modifier
                     .fillMaxSize()
                     .graphicsLayer {
-                        compositingStrategy = CompositingStrategy.Offscreen
-                        alpha = 1f - transitionProgressState.value
+                        val imageAlpha = 1f - transitionProgressState.value
+                        // Keep the layer for fades; the fully opaque backdrop needs no buffer.
+                        compositingStrategy = if (imageAlpha == 1f) {
+                            CompositingStrategy.Auto
+                        } else {
+                            CompositingStrategy.Offscreen
+                        }
+                        alpha = imageAlpha
                     },
                 contentScale = ContentScale.Crop,
-                alignment = Alignment.TopEnd
+                alignment = Alignment.TopEnd,
+                onLoading = {
+                    if (model === imageModel && android.util.Log.isLoggable("TurboPerf", android.util.Log.DEBUG)) {
+                        com.nuvio.tv.core.perf.TurboPerf.mark("hero_artwork_request")
+                    }
+                },
+                onSuccess = {
+                    if (model != null && model === imageModel) {
+                        displayedBackdrop?.let { HeroBackdropState.update(it) }
+                        com.nuvio.tv.core.perf.TurboPerf.onHeroBackdropLoaded()
+                    }
+                },
+                onError = {
+                    if (model != null && model === imageModel) {
+                        displayedBackdrop?.let { failedArtwork = failedArtwork + it }
+                    }
+                }
             )
         }
         if (shouldPlay) {
@@ -214,12 +248,17 @@ internal fun ModernHeroGradientLayer(
     modifier: Modifier
 ) {
     val isRtl = LocalLayoutDirection.current == LayoutDirection.Rtl
+    val reducedEffects = rememberReducedHomeEffects()
+    val gradientModifier = if (reducedEffects) {
+        modifier
+    } else {
+        modifier.graphicsLayer {
+            compositingStrategy = CompositingStrategy.Offscreen
+            alpha = if (isTrailerPlayingFullScreen()) 0f else 1f
+        }
+    }
     Box(
-        modifier = modifier
-            .graphicsLayer {
-                compositingStrategy = CompositingStrategy.Offscreen
-                alpha = if (isTrailerPlayingFullScreen()) 0f else 1f
-            }
+        modifier = gradientModifier
             .drawWithCache {
                 val fullScreen = isFullScreen()
                 val horizontalFadeEndX = size.width * if (fullScreen) 0.65f else 0.45f
@@ -276,6 +315,7 @@ internal fun ModernHeroGradientLayer(
                 )
 
                 onDrawBehind {
+                    if (reducedEffects && isTrailerPlayingFullScreen()) return@onDrawBehind
                     // 1. Horizontal fade (reversed in RTL)
                     val rectLeft = if (isRtl) size.width - horizontalFadeEndX else 0f
                     drawRect(
@@ -421,13 +461,28 @@ private fun HeroTitleContent(
                 alignment = Alignment.CenterStart
             )
         } else if (preview.title.isNotBlank()) {
-            Text(
-                text = preview.title,
-                style = scaledTitleStyle,
-                color = NuvioTheme.colors.TextPrimary,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis
-            )
+            // Personal build: the logo URL often arrives a moment after the hero (metadata
+            // enrichment), so the plain title flashed and was then swapped for the logo. Keep
+            // the title slot empty (same height, no layout jump) for a short grace period and
+            // only draw the text if no logo has arrived by then or the logo failed to load.
+            var titleGraceOver by remember(preview.title) { mutableStateOf(logoLoadFailed) }
+            LaunchedEffect(preview.title) {
+                if (!titleGraceOver) {
+                    kotlinx.coroutines.delay(HERO_TITLE_LOGO_GRACE_MS)
+                    titleGraceOver = true
+                }
+            }
+            if (titleGraceOver) {
+                Text(
+                    text = preview.title,
+                    style = scaledTitleStyle,
+                    color = NuvioTheme.colors.TextPrimary,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+            } else {
+                Spacer(modifier = Modifier.height(100.dp))
+            }
         }
 
         val strStatusEnded = stringResource(if (preview.isSeries) R.string.series_status_ended else R.string.movie_status_ended)

@@ -5,6 +5,18 @@ import com.nuvio.tv.domain.model.CatalogRow
 import kotlinx.coroutines.flow.Flow
 
 interface CatalogRepository {
+    /** Cached first page if the currently selected add-on allows HTTP caching. */
+    suspend fun getCachedHomeCatalog(
+        addonBaseUrl: String,
+        addonId: String,
+        addonName: String,
+        catalogId: String,
+        catalogName: String,
+        type: String,
+        skipStep: Int,
+        supportsSkip: Boolean
+    ): CatalogRow? = null
+
     fun getCatalog(
         addonBaseUrl: String,
         addonId: String,

@@ -99,6 +99,36 @@ class StreamRepositoryImpl @Inject constructor(
         priorityBingeGroup: String?,
         preferredPluginOnly: Boolean,
         continuePluginOnly: Boolean
+    ): Flow<NetworkResult<List<AddonStreams>>> = observeStreamSearch(
+        type, videoId, season, episode, forceRefresh, priorityBingeGroup,
+        preferredPluginOnly, continuePluginOnly, speculative = false
+    )
+
+    override suspend fun prewarmMovieStreams(videoId: String) {
+        if (serverStreams.isNativeRequest(videoId)) return
+        observeStreamSearch(
+            type = "movie",
+            videoId = videoId,
+            season = null,
+            episode = null,
+            forceRefresh = false,
+            priorityBingeGroup = null,
+            preferredPluginOnly = false,
+            continuePluginOnly = false,
+            speculative = true
+        ).collect {}
+    }
+
+    private fun observeStreamSearch(
+        type: String,
+        videoId: String,
+        season: Int?,
+        episode: Int?,
+        forceRefresh: Boolean,
+        priorityBingeGroup: String?,
+        preferredPluginOnly: Boolean,
+        continuePluginOnly: Boolean,
+        speculative: Boolean
     ): Flow<NetworkResult<List<AddonStreams>>> = flow {
         val sourceConfiguration = captureSourceConfiguration()
         val isNativeServerRequest = serverStreams.isNativeRequest(videoId)
@@ -116,7 +146,8 @@ class StreamRepositoryImpl @Inject constructor(
         emitAll(
             streamSearchSessions.observe(
                 key = requestKey,
-                forceRefresh = forceRefresh
+                forceRefresh = forceRefresh,
+                speculative = speculative
             ) {
                 fetchStreamsFromAllSources(
                     type = type,

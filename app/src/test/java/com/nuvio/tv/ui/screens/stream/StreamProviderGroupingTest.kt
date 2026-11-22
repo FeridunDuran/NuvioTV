@@ -36,6 +36,18 @@ class StreamProviderGroupingTest {
         assertEquals(emptyList<Stream>(), groupStreamsByProvider(emptyList()))
     }
 
+    @Test fun `only torrents with known scarce seeds move behind regular tiers`() {
+        val scarce = stream(null, "1080p Seeds: 4").copy(url = null, infoHash = "a".repeat(40))
+        val unreported = scarce.copy(name = "1080p")
+        val direct = stream(null, "720p Seeds: 0")
+        val healthy = scarce.copy(name = "4K Seeds: 5")
+
+        assertEquals(
+            listOf(unreported, direct, healthy, scarce),
+            groupStreamsByProvider(listOf(scarce, healthy, direct, unreported))
+        )
+    }
+
     @Test fun `a provider header appears once per group and separately in another repository`() {
         val first = stream("Alpha", "first")
         val second = stream("Alpha", "second")

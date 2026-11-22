@@ -38,7 +38,8 @@ private fun computeIsPromo(stream: Stream): Boolean {
 
 // Personal build: this TV struggles with 4K HEVC. Within each provider list 1080p first, then
 // 720p, then 4K, then the rest; inside each tier the most seeded torrent comes first.
-// sortedWith is stable, so streams without a seed count keep the add-on's own order.
+// Known torrents with fewer than five seeds follow the regular tiers.
+// Stable sorting preserves the add-on order for ties.
 private val SEED_PATTERNS = listOf(
     Regex("👤\\s*([0-9][0-9.,]*)"),
     Regex("(?i)seed(?:er)?s?\\s*[:=]?\\s*([0-9][0-9.,]*)"),
@@ -72,7 +73,10 @@ private val orderKeyCache = java.util.Collections.synchronizedMap(java.util.Weak
 
 private fun orderKey(stream: Stream): Long =
     orderKeyCache.getOrPut(stream) {
-        resolutionTier(stream).toLong() * 10_000_000_000L - seedCount(stream).coerceAtLeast(-1).toLong()
+        val seeds = seedCount(stream)
+        val scarceTorrent = stream.isTorrent() && seeds in 0..4
+        val tier = resolutionTier(stream) + if (scarceTorrent) 4 else 0
+        tier * 10_000_000_000L - seeds
     }
 
 private fun orderForWeakTv(streams: List<Stream>): List<Stream> =

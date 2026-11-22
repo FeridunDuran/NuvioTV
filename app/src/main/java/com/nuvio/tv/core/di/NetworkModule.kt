@@ -337,8 +337,11 @@ object NetworkModule {
 
     @Provides
     @Singleton
-    fun provideAddonApi(retrofit: Retrofit): AddonApi =
-        retrofit.create(AddonApi::class.java)
+    fun provideAddonApi(retrofit: Retrofit, @Named("addonPermissive") client: OkHttpClient): AddonApi =
+        retrofit.newBuilder()
+            .client(client.newBuilder().addInterceptor(AddonResponseSizeDiagnostics()).build())
+            .build()
+            .create(AddonApi::class.java)
 
     @Provides
     @Singleton

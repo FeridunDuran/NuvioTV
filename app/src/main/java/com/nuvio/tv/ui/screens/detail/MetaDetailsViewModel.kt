@@ -91,6 +91,7 @@ internal fun shouldContinueTrailerInBackgroundOnBack(
 class MetaDetailsViewModel @Inject constructor(
     @ApplicationContext private val context: Context,
     private val metaRepository: MetaRepository,
+    private val streamRepository: com.nuvio.tv.domain.repository.StreamRepository,
     private val tmdbSettingsDataStore: TmdbSettingsDataStore,
     private val tmdbService: TmdbService,
     private val tmdbMetadataService: TmdbMetadataService,
@@ -130,6 +131,21 @@ class MetaDetailsViewModel @Inject constructor(
     ) { state, profile, progress ->
         applyDetailShuffle(state, profile, progress, episodeShuffle, shuffleVisit, localizedContext)
     }.stateIn(viewModelScope, SharingStarted.Eagerly, MetaDetailsUiState())
+
+    internal fun prewarmMovieId(meta: Meta?): String? {
+        if (meta != null) return meta.id.takeIf { meta.apiType.equals("movie", ignoreCase = true) }
+        // A canonical movie deep link can prewarm even when metadata is still arriving.
+        return itemId.takeIf {
+            itemType.equals("movie", ignoreCase = true) &&
+                it.startsWith("tt") && it.length > 2 && it.drop(2).all { digit -> digit in '0'..'9' }
+        }
+    }
+
+    internal suspend fun prewarmMovieStreams(videoId: String) {
+        kotlinx.coroutines.withTimeoutOrNull(12_000L) {
+            streamRepository.prewarmMovieStreams(videoId)
+        }
+    }
 
     private val _posterCardCornerRadiusDp = MutableStateFlow(12)
     val posterCardCornerRadiusDp: StateFlow<Int> = _posterCardCornerRadiusDp.asStateFlow()

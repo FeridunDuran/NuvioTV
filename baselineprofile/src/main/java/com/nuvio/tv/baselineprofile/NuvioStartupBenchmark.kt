@@ -11,15 +11,8 @@ import org.junit.Test
 import org.junit.runner.RunWith
 
 /**
- * Startup guard rail for the TV UI.
- *
- * The launch is measured with the baseline profile applied
- * (`CompilationMode.Partial(BaselineProfileMode.UseIfAvailable)`) and the metric is the time
- * the app needs until it shows its first frame.
- *
- * This is a setup-only measurement: no journey is walked inside the measured block, so the
- * number describes the cold launch of the home screen and nothing else. The frame timing of
- * the journeys lives in [NuvioFrameMetricsBenchmark].
+ * Measures cold launch to the first frame with and without the packaged Baseline Profile.
+ * Onboarding is completed in setup so both modes measure the same home screen launch.
  */
 @RunWith(AndroidJUnit4::class)
 class NuvioStartupBenchmark {
@@ -28,7 +21,13 @@ class NuvioStartupBenchmark {
     val benchmarkRule = MacrobenchmarkRule()
 
     @Test
-    fun startupWithBaselineProfile() {
+    fun startupWithBaselineProfile() =
+        measureStartup(CompilationMode.Partial(BaselineProfileMode.Require))
+
+    @Test
+    fun startupWithoutCompilation() = measureStartup(CompilationMode.None())
+
+    private fun measureStartup(compilationMode: CompilationMode) {
         val device = uiDevice()
         val packageName = resolveTargetPackage(device, BENCHMARK_TARGET_PACKAGE)
         // The labels of the journeys are the English ones, so the device locale is pinned for
@@ -37,7 +36,7 @@ class NuvioStartupBenchmark {
             benchmarkRule.measureRepeated(
                 packageName = packageName,
                 metrics = listOf(StartupTimingMetric()),
-                compilationMode = CompilationMode.Partial(BaselineProfileMode.UseIfAvailable),
+                compilationMode = compilationMode,
                 // A cold start: the library kills the app process after the setup block and the
                 // launch inside the measured block is therefore a real cold start.
                 startupMode = StartupMode.COLD,

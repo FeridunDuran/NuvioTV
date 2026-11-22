@@ -237,7 +237,7 @@ class HomeViewModel @Inject constructor(
     internal var customCatalogTitles: Map<String, String> = emptyMap()
     internal var currentHeroCatalogKeys: List<String> = emptyList()
     internal var catalogUpdateJob: Job? = null
-    internal var hasRenderedFirstCatalog = false
+    private var catalogUpdatePending = false
     internal val catalogLoadSemaphore = Semaphore(MAX_CATALOG_LOAD_CONCURRENCY)
     internal var pendingCatalogLoads = 0
     internal val activeCatalogLoadJobs = mutableSetOf<Job>()
@@ -878,24 +878,15 @@ class HomeViewModel @Inject constructor(
         loadMoreCatalogItemsPipeline(catalogId, addonId, type)
 
     internal fun scheduleUpdateCatalogRows() {
-        catalogUpdateJob?.cancel()
+        catalogUpdatePending = true
+        if (catalogUpdateJob?.isActive == true) return
         catalogUpdateJob = viewModelScope.launch {
-            val debounceMs = when {
-                // First render: use a moderate debounce so near-simultaneous
-                // catalog arrivals are batched into a single heavy update pass.
-                !hasRenderedFirstCatalog && hasAnyCatalogRows() -> {
-                    hasRenderedFirstCatalog = true
-                    150L
-                }
-                // During bulk loading, batch aggressively — placeholders are
-                // already visible so the user won't notice the delay.
-                pendingCatalogLoads > 8 -> 300L
-                pendingCatalogLoads > 3 -> 250L
-                pendingCatalogLoads > 0 -> 200L
-                else -> 80L
+            while (catalogUpdatePending) {
+                // Coalesce a burst without restarting the timer for every response.
+                delay(if (pendingCatalogLoads > 0) 120L else 40L)
+                catalogUpdatePending = false
+                updateCatalogRows()
             }
-            delay(debounceMs)
-            updateCatalogRows()
         }
     }
 

@@ -65,6 +65,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.core.view.doOnPreDraw
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -133,6 +134,16 @@ fun StreamScreen(
     onAutoPlayResolved: (StreamPlaybackInfo) -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val sourceView = androidx.compose.ui.platform.LocalView.current
+    val hasVisibleSources = uiState.filteredStreams.isNotEmpty()
+    LaunchedEffect(hasVisibleSources, sourceView) {
+        if (hasVisibleSources && android.util.Log.isLoggable("TurboPerf", android.util.Log.DEBUG)) {
+            sourceView.doOnPreDraw {
+                com.nuvio.tv.core.perf.TurboPerf.mark("stream_first_sources_predraw")
+            }
+        }
+    }
+
     val watchProgress by viewModel.watchProgress.collectAsStateWithLifecycle()
     val resumeProgress = streamResumeProgress(watchProgress, startFromBeginning)
     val resumePositionMs = resumeProgress?.position?.takeIf { it > 0L }

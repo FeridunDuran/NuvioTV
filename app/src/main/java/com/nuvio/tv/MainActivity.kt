@@ -1370,7 +1370,7 @@ open class MainActivity : ComponentActivity() {
             }
             return true
         }
-        return super.dispatchKeyEvent(event)
+        return com.nuvio.tv.core.perf.TurboPerf.dispatchDpad(event) { super.dispatchKeyEvent(event) }
     }
 
     override fun onStart() {

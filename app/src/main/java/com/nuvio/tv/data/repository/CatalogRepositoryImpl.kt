@@ -11,14 +11,19 @@ import com.nuvio.tv.data.mediaserver.messageRes
 import com.nuvio.tv.data.mediaserver.serverFailure
 import com.nuvio.tv.data.local.LayoutPreferenceDataStore
 import com.nuvio.tv.data.remote.api.AddonApi
+import com.nuvio.tv.data.remote.dto.CatalogResponseDto
+import com.nuvio.tv.core.poster.CustomPosterScreen
 import com.nuvio.tv.domain.model.CatalogRow
 import com.nuvio.tv.domain.model.ContentType
 import com.nuvio.tv.domain.repository.CatalogRepository
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.withContext
 import java.net.URLEncoder
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -46,7 +51,7 @@ class CatalogRepositoryImpl @Inject constructor(
         extraArgs: Map<String, String>,
         supportsSkip: Boolean,
         posterScreen: com.nuvio.tv.core.poster.CustomPosterScreen
-    ): Flow<NetworkResult<CatalogRow>> = flow {
+    ): Flow<NetworkResult<CatalogRow>> = flow<NetworkResult<CatalogRow>> {
         emit(NetworkResult.Loading)
 
         if (ServerCatalog.isServerAddon(addonBaseUrl)) {
@@ -65,55 +70,94 @@ class CatalogRepositoryImpl @Inject constructor(
         val url = buildCatalogUrl(addonBaseUrl, type, catalogId, skip, extraArgs)
         Log.d(
             TAG,
-            "Fetching catalog addonId=$addonId addonName=$addonName type=$type catalogId=$catalogId skip=$skip skipStep=$skipStep supportsSkip=$supportsSkip url=$url"
+            "Fetching catalog addonId=$addonId addonName=$addonName type=$type catalogId=$catalogId skip=$skip skipStep=$skipStep supportsSkip=$supportsSkip"
         )
 
         when (val result = safeApiCall(context) { api.getCatalog(url) }) {
             is NetworkResult.Success -> {
-                val rawItemCount = result.data.metas.size
-                val posterPattern = layoutPreferenceDataStore.customPosterUrlPattern
-                    .let { flow -> flow.first() }
-                val enabledScreens = layoutPreferenceDataStore.customPosterEnabledScreens.first()
-
-                val items = result.data.metas
-                    .mapNotNull { it?.toDomainOrNull(type, addonBaseUrl) }
-                    .distinctBy { it.id }
-                    .withCustomPosterUrls(
-                        com.nuvio.tv.core.poster.patternForScreen(posterPattern, posterScreen, enabledScreens)
-                    )
-                Log.d(
-                    TAG,
-                    "Catalog fetch success addonId=$addonId type=$type catalogId=$catalogId items=${items.size}"
-                )
-
-                val catalogRow = CatalogRow(
-                    addonId = addonId,
-                    addonName = addonName,
-                    addonBaseUrl = addonBaseUrl,
-                    catalogId = catalogId,
-                    catalogName = catalogName,
-                    type = ContentType.fromString(type),
-                    rawType = type,
-                    items = items,
-                    isLoading = false,
-                    hasMore = supportsSkip && rawItemCount > 0,
-                    currentPage = if (skipStep > 0) skip / skipStep else 0,
-                    supportsSkip = supportsSkip,
-                    skipStep = skipStep,
-                    nextSkip = if (supportsSkip && rawItemCount > 0) skip + rawItemCount else skip,
-                    extraArgs = extraArgs
-                )
-                emit(NetworkResult.Success(catalogRow))
+                emit(NetworkResult.Success(mapCatalog(
+                    result.data, addonBaseUrl, addonId, addonName, catalogId, catalogName,
+                    type, skip, skipStep, extraArgs, supportsSkip, posterScreen
+                )))
             }
             is NetworkResult.Error -> {
                 Log.w(
                     TAG,
-                    "Catalog fetch failed addonId=$addonId type=$type catalogId=$catalogId code=${result.code} message=${result.message} url=$url"
+                    "Catalog fetch failed addonId=$addonId type=$type catalogId=$catalogId code=${result.code}"
                 )
                 emit(result)
             }
             NetworkResult.Loading -> { /* Already emitted */ }
         }
+    }.flowOn(Dispatchers.IO)
+
+    override suspend fun getCachedHomeCatalog(
+        addonBaseUrl: String,
+        addonId: String,
+        addonName: String,
+        catalogId: String,
+        catalogName: String,
+        type: String,
+        skipStep: Int,
+        supportsSkip: Boolean
+    ): CatalogRow? = withContext(Dispatchers.IO) {
+        if (ServerCatalog.isServerAddon(addonBaseUrl)) return@withContext null
+        val url = buildCatalogUrl(addonBaseUrl, type, catalogId, 0, emptyMap())
+        val response = try {
+            api.getCachedCatalog(url)
+        } catch (error: CancellationException) {
+            throw error
+        } catch (_: Exception) {
+            return@withContext null
+        }
+        response.errorBody()?.close()
+        val data = response.body()?.takeIf { response.isSuccessful } ?: return@withContext null
+        mapCatalog(
+            data, addonBaseUrl, addonId, addonName, catalogId, catalogName,
+            type, 0, skipStep, emptyMap(), supportsSkip, CustomPosterScreen.HOME
+        ).takeIf { it.items.isNotEmpty() }
+    }
+
+    private suspend fun mapCatalog(
+        data: CatalogResponseDto,
+        addonBaseUrl: String,
+        addonId: String,
+        addonName: String,
+        catalogId: String,
+        catalogName: String,
+        type: String,
+        skip: Int,
+        skipStep: Int,
+        extraArgs: Map<String, String>,
+        supportsSkip: Boolean,
+        posterScreen: CustomPosterScreen
+    ): CatalogRow {
+        val rawItemCount = data.metas.size
+        val posterPattern = layoutPreferenceDataStore.customPosterUrlPattern.first()
+        val enabledScreens = layoutPreferenceDataStore.customPosterEnabledScreens.first()
+        val items = data.metas
+            .mapNotNull { it?.toDomainOrNull(type, addonBaseUrl) }
+            .distinctBy { it.id }
+            .withCustomPosterUrls(
+                com.nuvio.tv.core.poster.patternForScreen(posterPattern, posterScreen, enabledScreens)
+            )
+        return CatalogRow(
+            addonId = addonId,
+            addonName = addonName,
+            addonBaseUrl = addonBaseUrl,
+            catalogId = catalogId,
+            catalogName = catalogName,
+            type = ContentType.fromString(type),
+            rawType = type,
+            items = items,
+            isLoading = false,
+            hasMore = supportsSkip && rawItemCount > 0,
+            currentPage = if (skipStep > 0) skip / skipStep else 0,
+            supportsSkip = supportsSkip,
+            skipStep = skipStep,
+            nextSkip = if (supportsSkip && rawItemCount > 0) skip + rawItemCount else skip,
+            extraArgs = extraArgs
+        )
     }
 
     private fun buildCatalogUrl(

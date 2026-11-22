@@ -165,6 +165,27 @@ class ContinueWatchingNextUpReconciliationTest {
         )
     )
 
+    @Test
+    fun `duplicate IMDb movie prefers precise local progress only within two minutes`() {
+        val local = inProgress("tt123").progress.copy(
+            contentType = "movie",
+            videoId = "tt123",
+            season = null,
+            episode = null
+        )
+        val remote = local.copy(
+            contentId = "imdb:TT123",
+            position = 0L,
+            source = WatchProgress.SOURCE_TRAKT_PLAYBACK
+        )
+        val unrelated = local.copy(contentId = "tmdb:123")
+        val newerRemote = remote.copy(lastWatched = local.lastWatched + 120_001)
+        val nearRemote = remote.copy(lastWatched = local.lastWatched + 120_000)
+
+        assertEquals(listOf(local, unrelated), deduplicateInProgress(listOf(nearRemote, local, unrelated)))
+        assertEquals(listOf(newerRemote, unrelated), deduplicateInProgress(listOf(local, newerRemote, unrelated)))
+    }
+
     private fun inProgress(contentId: String) = ContinueWatchingItem.InProgress(
         WatchProgress(
             contentId = contentId,

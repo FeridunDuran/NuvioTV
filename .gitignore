@@ -42,6 +42,9 @@ db/
 backups/
 .supabase_db.env
 scripts/*
+!scripts/home_readiness.py
+!scripts/check_hero_artwork.py
+!scripts/measure_source_readiness.py
 !scripts/generate-release-notes.sh
 !scripts/generate_release_notes.py
 !scripts/release_notes/

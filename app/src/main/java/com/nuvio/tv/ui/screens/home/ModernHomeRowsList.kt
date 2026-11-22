@@ -269,7 +269,8 @@ internal fun ModernHomeRowsList(
             }
         }
     }
-    val sharedPlaceholderShimmerOffsetState = if (needsPlaceholderShimmer) {
+    val reducedEffects = rememberReducedHomeEffects()
+    val sharedPlaceholderShimmerOffsetState = if (!reducedEffects && needsPlaceholderShimmer) {
         rememberPlaceholderShimmerOffsetState(label = "sharedRowShimmer")
     } else {
         null
