@@ -87,6 +87,7 @@ class NuvioApplication : Application(), SingletonImageLoader.Factory {
         MemoryBudget.init(this)
         super.onCreate()
         com.nuvio.tv.core.perf.TurboPerf.start(this)
+        com.nuvio.tv.core.perf.BlackBox.init(this)
         // Personal build: Sentry disabled entirely.
         PluginRuntimeHooks.onApplicationCreate(this)
         androidTvChannelSyncService.start()
@@ -102,6 +103,9 @@ class NuvioApplication : Application(), SingletonImageLoader.Factory {
     override fun onTrimMemory(level: Int) {
         super.onTrimMemory(level)
         com.nuvio.tv.core.perf.TurboPerf.mark("trim_memory_$level")
+        if (level >= android.content.ComponentCallbacks2.TRIM_MEMORY_RUNNING_MODERATE) {
+            com.nuvio.tv.core.perf.BlackBox.log("trim_memory level=$level ${com.nuvio.tv.core.perf.BlackBox.memorySummary(this)}")
+        }
         if (level >= android.content.ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW) {
             SingletonImageLoader.get(this).memoryCache?.clear()
         }
@@ -118,8 +122,10 @@ class NuvioApplication : Application(), SingletonImageLoader.Factory {
                 .dns(IPv4FirstDns())
                 .socketFactory(NoDelaySocketFactory)
                 .connectTimeout(4, TimeUnit.SECONDS)
-                .readTimeout(5, TimeUnit.SECONDS)
-                .callTimeout(8, TimeUnit.SECONDS)
+                // Personal build: was read 5 s / call 8 s; large backdrops on a slow connection
+                // failed and the card stayed blank.
+                .readTimeout(10, TimeUnit.SECONDS)
+                .callTimeout(20, TimeUnit.SECONDS)
                 .addInterceptor { chain ->
                     try {
                         chain.proceed(chain.request())
@@ -193,6 +199,12 @@ class NuvioApplication : Application(), SingletonImageLoader.Factory {
                     .maxSizeBytes(200L * 1024 * 1024)
                     .build()
             }
+            .eventListener(object : coil3.EventListener() {
+                override fun onError(request: coil3.request.ImageRequest, result: coil3.request.ErrorResult) {
+                    val host = runCatching { android.net.Uri.parse(request.data.toString()).host }.getOrNull() ?: "?"
+                    com.nuvio.tv.core.perf.BlackBox.imageError(host, result.throwable)
+                }
+            })
             .crossfade(false)
             .precision(coil3.size.Precision.INEXACT)
             .allowHardware(false)

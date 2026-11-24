@@ -1381,6 +1381,7 @@ open class MainActivity : ComponentActivity() {
         externalPlaybackTracker.raiseAutoNextOverlayOnReturn()
         super.onStart()
         com.nuvio.tv.core.perf.TurboPerf.setForeground(true)
+        com.nuvio.tv.core.perf.BlackBox.markForeground()
         startupSyncService.startPeriodicSurfacePulls()
         androidTvChannelSyncService.onForegroundChanged(true)
     }
@@ -1389,6 +1390,7 @@ open class MainActivity : ComponentActivity() {
         externalPlaybackTracker.onExternalPlayerCoveredApp()
         super.onStop()
         com.nuvio.tv.core.perf.TurboPerf.setForeground(false)
+        com.nuvio.tv.core.perf.BlackBox.markBackground()
         startupSyncService.stopPeriodicSurfacePulls()
         // App going to background (e.g. user returning to the launcher): reconcile the
         // Continue Watching channel once so Projectivy repaints it with fresh progress.

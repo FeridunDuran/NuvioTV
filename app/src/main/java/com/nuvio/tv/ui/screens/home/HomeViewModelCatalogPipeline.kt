@@ -411,6 +411,8 @@ internal fun HomeViewModel.loadHeroCatalogsPipeline() {
     }
 }
 
+private const val CATALOG_RETRY_DELAY_MS = 4_000L
+
 internal fun HomeViewModel.loadCatalogPipeline(
     addon: Addon,
     catalog: CatalogDescriptor,
@@ -418,7 +420,9 @@ internal fun HomeViewModel.loadCatalogPipeline(
     /** True only for the ON_RESUME refresh, where a row already on screen must be merged into. */
     isRefresh: Boolean = false,
     requestedByUser: Boolean = false,
-    forceReplace: Boolean = false
+    forceReplace: Boolean = false,
+    /** Personal build: 1 for the single delayed retry after a transient failure. */
+    retryAttempt: Int = 0
 ) {
     val loadJob = viewModelScope.launch {
         var hasCountedCompletion = false
@@ -507,6 +511,26 @@ internal fun HomeViewModel.loadCatalogPipeline(
                             HomeViewModel.TAG,
                             "Home catalog failed addonId=${addon.id} type=${catalog.apiType} catalogId=${catalog.id} code=${result.code} message=${result.message}"
                         )
+                        // Personal build: add-on servers intermittently answer 5xx (seen: Cloudflare
+                        // 525/526) or time out, and the row then stayed missing until a manual refresh.
+                        // Retry such a catalog once after a short delay.
+                        val code = result.code
+                        val transient = code == null || code >= 500 || code == 408 || code == 429
+                        if (transient && retryAttempt == 0 && generation == catalogLoadGeneration) {
+                            pendingCatalogLoads += 1
+                            catalogsLoadInProgress = true
+                            viewModelScope.launch {
+                                kotlinx.coroutines.delay(CATALOG_RETRY_DELAY_MS)
+                                if (generation == catalogLoadGeneration) {
+                                    loadCatalogPipeline(
+                                        addon, catalog, generation, isRefresh, requestedByUser, forceReplace,
+                                        retryAttempt = 1
+                                    )
+                                } else {
+                                    pendingCatalogLoads = (pendingCatalogLoads - 1).coerceAtLeast(0)
+                                }
+                            }
+                        }
                         if (pendingCatalogLoads == 0) {
                             catalogsLoadInProgress = false
                         }
